@@ -1,11 +1,11 @@
 ﻿<#
 .SYNOPSIS
-    Gắn package Unity của UnityPilot vào một project Unity chỉ trên máy này, không để lại thay đổi nào cho git của project.
+    Gắn package Unity của PcPilot vào một project Unity chỉ trên máy này, không để lại thay đổi nào cho git của project.
 .DESCRIPTION
-    Tạo junction Assets/UnityPilot -> <kho unitypilot>/unity (đặt trong Assets thì Unity không ghi gì vào
-    Packages/manifest.json hay packages-lock.json), rồi khai Assets/UnityPilot và Assets/UnityPilot.meta trong
+    Tạo junction Assets/PcPilot -> <kho pcpilot>/unity (đặt trong Assets thì Unity không ghi gì vào
+    Packages/manifest.json hay packages-lock.json), rồi khai Assets/PcPilot và Assets/PcPilot.meta trong
     .git/info/exclude (danh sách bỏ qua riêng của máy, không commit).
-    Xong thì bấm vào cửa sổ Unity (hoặc Stop rồi Play từ trang UnityPilot) để Unity nạp.
+    Xong thì bấm vào cửa sổ Unity (hoặc Stop rồi Play từ trang PcPilot) để Unity nạp.
 
     powershell -File scripts/link-project.ps1 -Project D:\Projects\MyGame
     powershell -File scripts/link-project.ps1 -Project D:\Projects\MyGame -Remove
@@ -19,9 +19,9 @@ $ErrorActionPreference = 'Stop'
 $Project = (Resolve-Path -LiteralPath $Project).Path
 if (-not (Test-Path -LiteralPath (Join-Path $Project 'ProjectSettings\ProjectVersion.txt'))) { throw "$Project không phải project Unity" }
 $Pkg = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\unity')).Path
-$Link = Join-Path $Project 'Assets\UnityPilot'
+$Link = Join-Path $Project 'Assets\PcPilot'
 
-function Say([string]$Text) { Write-Output "unitypilot: $Text" }
+function Say([string]$Text) { Write-Output "pcpilot: $Text" }
 function Is-Junction([string]$Path) {
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
     return $item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)
@@ -47,11 +47,11 @@ try {
     }
     $ErrorActionPreference = 'Stop'
 } finally { Pop-Location }
-$lines = @("/${prefix}Assets/UnityPilot/", "/${prefix}Assets/UnityPilot.meta")
+$lines = @("/${prefix}Assets/PcPilot/", "/${prefix}Assets/PcPilot.meta")
 # exclude của git đọc như văn bản thường: dòng ghi chú viết ASCII.
-$marker = '# UnityPilot (chi may nay, xem kho unitypilot)'
+$marker = '# PcPilot (chi may nay, xem kho pcpilot)'
 
-# Đọc exclude bỏ ký tự CR, ghi lại toàn bộ bằng LF: git không bỏ CR cuối dòng, dòng "/Assets/UnityPilot.meta`r" sẽ
+# Đọc exclude bỏ ký tự CR, ghi lại toàn bộ bằng LF: git không bỏ CR cuối dòng, dòng "/Assets/PcPilot.meta`r" sẽ
 # không khớp (Add-Content của PowerShell ghi CRLF vào tệp vốn dùng LF).
 function Read-Exclude { if (Test-Path -LiteralPath $exclude) { @([IO.File]::ReadAllLines($exclude) | ForEach-Object { $_.TrimEnd("`r") }) } else { @() } }
 function Write-Exclude([string[]]$Content) {
@@ -66,7 +66,7 @@ if ($Remove) {
     if ($exclude -and (Test-Path -LiteralPath $exclude)) {
         Write-Exclude @(Read-Exclude | Where-Object { $_ -ne $marker -and $lines -notcontains $_ })
     }
-    Say 'đã gỡ package UnityPilot khỏi project'
+    Say 'đã gỡ package PcPilot khỏi project'
     exit 0
 }
 
@@ -93,11 +93,11 @@ if ($exclude) {
     Push-Location -LiteralPath $Project
     try {
         $ErrorActionPreference = 'Continue'
-        $st = (& git status --porcelain -- 'Assets/UnityPilot' 'Assets/UnityPilot.meta' 2>$null) -join "`n"
+        $st = (& git status --porcelain -- 'Assets/PcPilot' 'Assets/PcPilot.meta' 2>$null) -join "`n"
         $ErrorActionPreference = 'Stop'
     } finally { Pop-Location }
-    if ($st) { Say "git vẫn thấy thay đổi:`n$st" } else { Say 'git không thấy thay đổi nào của UnityPilot' }
+    if ($st) { Say "git vẫn thấy thay đổi:`n$st" } else { Say 'git không thấy thay đổi nào của PcPilot' }
 } else {
     Say 'project không nằm trong repo git, bỏ qua bước exclude'
 }
-Say 'bấm vào cửa sổ Unity (hoặc Stop rồi Play từ trang UnityPilot) để Unity nạp'
+Say 'bấm vào cửa sổ Unity (hoặc Stop rồi Play từ trang PcPilot) để Unity nạp'

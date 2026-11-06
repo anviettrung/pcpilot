@@ -1,6 +1,7 @@
-// Sidecar UnityPilot: chơi thử game Unity trong Editor từ điện thoại. Giữ kết nối với điện thoại (WebSocket), encode
-// H.264 bằng ffmpeg từ khung RGBA app đưa sang. Phần riêng của từng app (hiện có Unity) nằm trong src/apps/.
-// Nghe ở 127.0.0.1; điện thoại vào qua lớp chuyển tiếp HTTPS (tailscale serve, Cloudflare Tunnel...; xem machines.json > access). Chạy quyền thường.
+// Sidecar PcPilot: remote màn hình từ điện thoại. Giữ kết nối với điện thoại (WebSocket), encode H.264 bằng ffmpeg,
+// gửi phím chuột về máy. Phần riêng của từng app (remote màn hình, Unity, app chụp theo cửa sổ) nằm trong src/apps/.
+// Nghe ở 127.0.0.1; điện thoại vào qua lớp chuyển tiếp HTTPS (tailscale serve, Cloudflare Tunnel...; xem machines.json > access).
+// Chạy quyền thường; phím chuột tới app quyền admin đi qua tiến trình phụ src/elevated.ts.
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
@@ -8,22 +9,30 @@ import index from '../web/index.html';
 import { APPS } from './apps';
 import type { App, Client, Host, RawFrame, StreamTarget, WS } from './apps/types';
 import { isAllowed, isOriginAllowed } from './core/access';
-import { ACCESS, cfg, log, machinesCfg, net, PORT, QUALITY, REPO, ROOT, self, UNITY_PORT, type Quality } from './core/config';
-import { RawEncoder, detectEncoder, findFfmpeg, type EncodedFrame, type EncoderKind } from './core/encoder';
+import { ACCESS, cfg, INPUT_PORT, log, machinesCfg, net, PORT, QUALITY, REPO, ROOT, self, UNITY_PORT, type Quality } from './core/config';
+import { RawEncoder, ScreenCapture, detectEncoder, findFfmpeg, listOutputs, rawRect, type CaptureOptions, type EncodedFrame, type EncoderKind } from './core/encoder';
+import { InputBridge } from './screen/bridge';
+import { isMouseAction, isKey } from './screen/input';
+import { getOrientation } from './screen/display';
+import { isForeground, listMonitors, type Monitor } from './screen/win32';
 
 // --- ffmpeg ------------------------------------------------------------------------------------------
 const ffmpeg = findFfmpeg();
 if (!ffmpeg) log('không thấy ffmpeg: chưa stream được (cài: winget install Gyan.FFmpeg)');
-const forced = process.env.UNITYPILOT_ENCODER as EncoderKind | undefined; // thử nhánh dự phòng: UNITYPILOT_ENCODER=libx264
+const forced = process.env.PCPILOT_ENCODER as EncoderKind | undefined; // thử nhánh dự phòng: PCPILOT_ENCODER=libx264
 const encoderKind: EncoderKind = forced ?? (ffmpeg ? detectEncoder(ffmpeg) : 'libx264');
-log(`ffmpeg ${ffmpeg ?? '(không có)'}, encoder ${encoderKind}`);
+let outputs = ffmpeg ? listOutputs(ffmpeg) : [];
+let outputsAt = Date.now();
+log(`ffmpeg ${ffmpeg ?? '(không có)'}, encoder ${encoderKind}, màn hình ${outputs.map((o) => `#${o.idx} ${o.w}x${o.h}`).join(', ')}`);
 
+const input = new InputBridge(INPUT_PORT);
 const clients = new Map<WS, Client>();
 const viewers = () => [...clients.values()].filter((c) => c.watch);
 let active: App = APPS[0];
 
 // --- Đo đạc theo cửa sổ 1 giây ------------------------------------------------------------------------
 const meter = { frames: 0, bytes: 0, capToRecv: 0, recvToEnc: 0, n: 0, fps: 0, kbps: 0, capToRecvMs: 0, recvToEncMs: 0 };
+let inputCount = 0;
 setInterval(() => {
   meter.fps = meter.frames;
   meter.kbps = Math.round((meter.bytes * 8) / 1000);
@@ -34,7 +43,7 @@ setInterval(() => {
 }, 1000);
 
 // --- Cỡ khung ----------------------------------------------------------------------------------------
-// Tỉ lệ cạnh dài / cạnh ngắn (Game view Unity đổi theo); 'free' = theo màn hình điện thoại. Dọc hay ngang theo cách cầm.
+// Tỉ lệ cạnh dài / cạnh ngắn cho nguồn 'raw' (Unity); 'free' = theo màn hình điện thoại. Dọc hay ngang theo cách cầm.
 const ASPECT: Record<string, number> = { '16:9': 16 / 9, iphonex: 2436 / 1125, ipad: 4 / 3 };
 
 /** Người xem vào sau cùng quyết định cỡ khung. */
@@ -48,7 +57,7 @@ function rawTarget(): StreamTarget | null {
   return { w: portrait ? q.short : long, h: portrait ? long : q.short, fps: last.fps, kbps: q.kbps, quality: last.quality };
 }
 
-// --- Nguồn hình: khung RGBA từ app (Unity) --------------------------------------------------------------
+// --- Nguồn 'raw': khung RGBA từ app (Unity) -------------------------------------------------------------
 let rawEnc: RawEncoder | null = null;
 let jpegEnc: RawEncoder | null = null;
 let lastJpegAt = 0;
@@ -86,29 +95,108 @@ function pushRaw(f: RawFrame) {
   }
 }
 
-function closeEncoders() {
-  rawEnc?.close();
-  jpegEnc?.close();
-  rawEnc = jpegEnc = null;
+// --- Nguồn 'screen': chụp vùng màn hình app chỉ ra ---------------------------------------------------------
+let capture: ScreenCapture | null = null;
+/** Vùng đang chụp theo toạ độ màn hình ảo: phím chuột từ điện thoại đổi toạ độ theo vùng này. */
+let area: { x: number; y: number; w: number; h: number; hwnd?: bigint; cls?: string } | null = null;
+let reason = '';
+let retryAt = 0;
+
+// Màn hình (toạ độ màn hình ảo) → chỉ số output DXGI của ddagrab: khớp theo cỡ; nhiều màn hình cùng cỡ thì theo thứ
+// tự màn hình chính trước, rồi từ trái sang phải (thứ tự DXGI thường đi như vậy).
+function outputFor(m: Monitor): number | null {
+  const mons = listMonitors();
+  // Số màn hình đổi, hay màn hình vừa xoay / đổi độ phân giải (không output nào cùng cỡ): hỏi lại ddagrab.
+  const stale = outputs.length !== mons.length || !outputs.some((o) => o.w === m.w && o.h === m.h);
+  if (ffmpeg && stale && Date.now() - outputsAt > (outputs.length !== mons.length ? 30_000 : 2_000)) {
+    outputs = listOutputs(ffmpeg);
+    outputsAt = Date.now();
+    log(`màn hình đổi: ${outputs.map((o) => `#${o.idx} ${o.w}x${o.h}`).join(', ')}`);
+  }
+  const same = outputs.filter((o) => o.w === m.w && o.h === m.h);
+  const i = mons.filter((x) => x.w === m.w && x.h === m.h).findIndex((x) => x.x === m.x && x.y === m.y);
+  return (same[Math.max(0, i)] ?? same[0])?.idx ?? null;
 }
 
-/** Bật nguồn hình theo app đang xem và người xem: chỉ app đang xem được bật, không ai xem thì tắt hết. */
+function closeCapture() {
+  capture?.close();
+  capture = null;
+  area = null;
+}
+
+function updateCapture() {
+  const r = active.region!();
+  if (typeof r === 'string') {
+    if (capture) log('dừng chụp:', r);
+    reason = r;
+    return closeCapture();
+  }
+  const m = r.monitor;
+  const idx = outputFor(m);
+  if (idx === null) return (reason = 'monitor'), closeCapture();
+  // Phần nằm ngoài màn hình thì cắt bớt; số chẵn cho yuv420p.
+  const left = r.x - m.x, top = r.y - m.y;
+  const x = Math.max(0, left), y = Math.max(0, top);
+  const w = (Math.min(left + r.w, m.w) - x) & ~1, h = (Math.min(top + r.h, m.h) - y) & ~1;
+  if (w < 64 || h < 64) return (reason = 'offscreen'), closeCapture();
+  reason = '';
+  const last = viewers().at(-1)!;
+  const q = QUALITY[last.quality] ?? QUALITY.high;
+  const short = Math.min(w, h);
+  const k = Math.min(q.short, short) / short; // không phóng to quá cỡ gốc
+  // Màn hình đang xoay: ddagrab cắt trong khung gốc (chưa xoay), ffmpeg xoay lại (xem rawRect).
+  const rotation = getOrientation(m.device) ?? 0;
+  const raw = rawRect({ x, y, w, h }, m.w, m.h, rotation);
+  const opt: CaptureOptions = {
+    ffmpeg: ffmpeg!, kind: encoderKind === 'mjpeg' ? 'libx264' : encoderKind, outputIdx: idx, ...raw,
+    outW: Math.max(2, Math.round((w * k) / 2) * 2), outH: Math.max(2, Math.round((h * k) / 2) * 2),
+    fps: last.fps, kbps: q.kbps, cursor: r.cursor !== false, rotation,
+  };
+  area = { x: m.x + x, y: m.y + y, w, h, hwnd: r.hwnd, cls: r.cls };
+  if (capture && capture.alive && capture.same(opt)) return;
+  if (capture && !capture.alive && Date.now() < retryAt) return;
+  capture?.close();
+  log(`chụp ${active.name}: màn hình #${idx} vùng ${x},${y} ${w}x${h}${rotation ? ` (xoay ${rotation})` : ''} → ${opt.outW}x${opt.outH} ${opt.fps}fps ${opt.kind}`);
+  lastError = '';
+  retryAt = Date.now() + 5000; // ffmpeg hỏng ngay (vd màn hình khoá) thì 5 giây sau mới thử lại
+  const c: ScreenCapture = new ScreenCapture(opt, (f) => onEncoded(f, false), (msg) => {
+    if (!c.closed) {
+      lastError = msg;
+      log(msg);
+    }
+  });
+  capture = c;
+  for (const cl of viewers()) cl.needKey = true;
+}
+
+/** Chọn nguồn hình theo app đang xem và người xem: chỉ app đang xem được chụp, không ai xem thì tắt hết. */
 function refresh() {
   const want = viewers().length > 0 && !!ffmpeg;
-  for (const a of APPS) a.stream(want && a === active ? rawTarget() : null);
-  if (!want) {
-    if (rawEnc || jpegEnc) log('dừng encode (không còn ai xem)');
-    closeEncoders();
+  for (const a of APPS) if (a.source === 'raw') a.stream!(want && a === active ? rawTarget() : null);
+  if (!want || active.source !== 'raw') {
+    rawEnc?.close();
+    jpegEnc?.close();
+    rawEnc = jpegEnc = null;
+  }
+  if (want && active.source === 'screen') updateCapture();
+  else {
+    if (capture) log('dừng chụp', want ? '' : '(không còn ai xem)');
+    closeCapture();
+    reason = '';
   }
 }
+// Cửa sổ dời chỗ, đổi cỡ, thu nhỏ: kiểm mỗi giây rồi chụp lại cho khớp.
+setInterval(() => active.source === 'screen' && viewers().length && refresh(), 1000);
 
 function activate(id: string) {
   const a = APPS.find((x) => x.id === id);
   if (!a || a === active) return;
   log(`chuyển sang ${a.name}`);
   active = a;
-  for (const c of clients.values()) c.needKey = true;
-  closeEncoders(); // khung của app mới có thể khác cỡ: encoder mở lại theo khung đầu tiên
+  for (const c of clients.values()) {
+    c.needKey = true;
+    releaseAll(c);
+  }
   refresh();
   broadcastStatus();
 }
@@ -162,8 +250,23 @@ function onEncoded(f: EncodedFrame, jpeg: boolean) {
   }
 }
 
+// --- Phím, chuột (app 'screen') -------------------------------------------------------------------------
+const lastPos = new WeakMap<Client, [number, number]>();
+const UP: Record<string, string> = { down: 'up', rdown: 'rup', mdown: 'mup' };
+
+/** Nhả mọi phím và nút chuột client còn giữ: mất kết nối giữa chừng thì không để kẹt trên PC. */
+function releaseAll(c: Client | undefined) {
+  if (!c) return;
+  for (const k of c.held) input.key(k, false);
+  if (c.held.size) log(`nhả các phím còn giữ: ${[...c.held].join(', ')}`);
+  c.held.clear();
+  const p = lastPos.get(c);
+  for (const b of c.buttons) if (p) input.mouse(p[0], p[1], UP[b] as any);
+  c.buttons.clear();
+}
 for (const sig of ['SIGINT', 'SIGTERM', 'exit'] as const)
   process.on(sig, () => {
+    for (const c of clients.values()) releaseAll(c);
     for (const a of APPS) {
       try {
         a.shutdown?.();
@@ -172,9 +275,69 @@ for (const sig of ['SIGINT', 'SIGTERM', 'exit'] as const)
     if (sig !== 'exit') process.exit(0);
   });
 
+const foreground = () => !area?.hwnd || isForeground(area.hwnd, area.cls);
+const refuse = (ws: WS, why: string) => ws.send(JSON.stringify({ type: 'inputResult', ok: false, reason: why }));
+
+function onInput(ws: WS, c: Client, m: any) {
+  if (active.source !== 'screen' || !area) return;
+  // Game có luật an toàn: cửa sổ không ở trên cùng thì không gửi, kẻo gõ nhầm vào ứng dụng khác.
+  const blocked = active.requireForeground && !foreground();
+  switch (m.type) {
+    case 'key': {
+      const code = String(m.k);
+      if (!isKey(code)) return;
+      if (m.down) {
+        if (blocked) return refuse(ws, 'notForeground');
+        if (c.held.has(code)) return;
+        c.held.add(code);
+      } else {
+        if (!c.held.delete(code)) return;
+      }
+      input.key(code, !!m.down);
+      inputCount++;
+      return;
+    }
+    case 'text': {
+      const s = String(m.s ?? '').slice(0, 500);
+      if (!s) return;
+      if (blocked) return refuse(ws, 'notForeground');
+      input.text(s);
+      inputCount++;
+      return;
+    }
+    case 'mouse': {
+      const a = String(m.a);
+      if (!isMouseAction(a)) return;
+      const isUp = a === 'up' || a === 'rup' || a === 'mup';
+      const downOf = a.replace('up', 'down'); // up → down, rup → rdown, mup → mdown
+      if (isUp && !c.buttons.has(downOf)) return;
+      if (!isUp && blocked) return a === 'move' ? undefined : refuse(ws, 'notForeground');
+      const clamp = (v: number) => Math.min(1, Math.max(0, Number(v) || 0));
+      const x = area.x + Math.round(clamp(m.x) * (area.w - 1));
+      const y = area.y + Math.round(clamp(m.y) * (area.h - 1));
+      lastPos.set(c, [x, y]);
+      if (a in UP) c.buttons.add(a);
+      if (isUp) c.buttons.delete(downOf);
+      input.mouse(x, y, a, Number(m.d) || 0);
+      if (a !== 'move') inputCount++;
+      return;
+    }
+    case 'focus': {
+      if (!area.hwnd) return;
+      const hwnd = area.hwnd;
+      void input.focus(hwnd).then((ok) => {
+        log(`đưa ${active.name} lên trên: ${ok ? 'được' : 'không được'}`);
+        if (!ok) refuse(ws, 'focusFailed');
+        broadcastStatus();
+      });
+      return;
+    }
+  }
+}
+
 // --- Phiên bản, tự cập nhật -------------------------------------------------------------------------
 // Phiên bản = giờ commit cuối của kho (so được giữa các máy). Trang thấy máy nào cũ hơn thì cho bấm Cập
-// nhật: sidecar kéo kho unitypilot rồi tự thoát, scripts/run-sidecar.ps1 chạy lại sau 5 giây với mã mới. Nhờ vậy không cần
+// nhật: sidecar kéo kho pcpilot rồi tự thoát, scripts/run-sidecar.ps1 chạy lại sau 5 giây với mã mới. Nhờ vậy không cần
 // ngồi trước máy kia (hay mở Claude Code ở đó) mới cập nhật được.
 const BUILD = String(Date.now()); // đổi mỗi lần sidecar khởi động: trang thấy khác thì mời tải lại
 function git(...args: string[]) {
@@ -183,6 +346,8 @@ function git(...args: string[]) {
 }
 const versionOf = (rev: string) => Number(git('log', '-1', '--format=%ct', rev).out) || 0;
 const VERSION = versionOf('HEAD');
+/** Mã tiến trình gửi phím quyền admin dùng: đổi thì nhờ nó tự thoát để chạy lại bằng mã mới. */
+const ELEVATED_PATHS = ['src/elevated.ts', 'src/screen', 'src/core/config.ts', 'src/core/access.ts', 'shared'];
 let updating = false;
 
 async function selfUpdate(ws: WS) {
@@ -193,16 +358,17 @@ async function selfUpdate(ws: WS) {
     // fetch + merge --ff-only (kho có thay đổi chưa commit hay lệch nhánh thì dừng, không ép).
     const f = git('fetch', '--quiet', 'origin');
     const mg = f.ok ? git('merge', '--ff-only', '--quiet', '@{u}') : f;
-    if (!mg.ok) return notice(ws, `Không kéo được kho unitypilot trên máy ${self.name}: ${mg.out.slice(0, 200)}`, true);
+    if (!mg.ok) return notice(ws, `Không kéo được kho pcpilot trên máy ${self.name}: ${mg.out.slice(0, 200)}`, true);
     const after = git('rev-parse', 'HEAD').out;
     if (versionOf('HEAD') === VERSION) return notice(ws, `Máy ${self.name} đã chạy bản mới nhất`);
     if (before !== after && !git('diff', '--quiet', before, after, '--', 'bun.lock').ok)
       Bun.spawnSync([process.execPath, 'install'], { cwd: ROOT, stdout: 'ignore', stderr: 'ignore', windowsHide: true });
+    if (before !== after && !git('diff', '--quiet', before, after, '--', ...ELEVATED_PATHS).ok) input.quit();
     // Ghi phiên bản đang chạy để install.ps1 lần sau khỏi khởi động lại thêm lần nữa.
     const tree = git('rev-parse', 'HEAD:');
     if (tree.ok) {
-      mkdirSync(join(homedir(), '.unitypilot'), { recursive: true });
-      writeFileSync(join(homedir(), '.unitypilot', 'unitypilot-tree.txt'), tree.out + '\n');
+      mkdirSync(join(homedir(), '.pcpilot'), { recursive: true });
+      writeFileSync(join(homedir(), '.pcpilot', 'pcpilot-tree.txt'), tree.out + '\n');
     }
     log(`tự cập nhật ${before.slice(0, 7)} -> ${after.slice(0, 7)}, khởi động lại`);
     notice(ws, `Máy ${self.name} đã kéo bản mới, đang khởi động lại (khoảng 10 giây)`);
@@ -214,6 +380,7 @@ async function selfUpdate(ws: WS) {
 
 // --- Trạng thái ----------------------------------------------------------------------------------------
 function statusEvent() {
+  const enc = active.source === 'screen' ? capture : rawEnc;
   return {
     type: 'status',
     build: BUILD,
@@ -223,21 +390,28 @@ function statusEvent() {
     httpsPort: cfg.httpsPort,
     tailnet: net.tailnet,
     app: active.id,
-    apps: Object.fromEntries(APPS.map((a) => [a.id, { name: a.name, ...a.status() }])),
+    apps: Object.fromEntries(APPS.map((a) => [a.id, { name: a.name, source: a.source, ...a.status() }])),
     stream: {
       ffmpeg: !!ffmpeg,
       encoder: encoderKind,
-      capturing: !!rawEnc?.alive,
+      capturing: active.source === 'screen' ? !!capture?.alive : !!rawEnc?.alive,
+      reason,
       error: lastError,
-      target: rawEnc ? { w: rawEnc.opt.width, h: rawEnc.opt.height } : null,
+      target: capture ? { w: capture.opt.outW, h: capture.opt.outH } : rawEnc ? { w: rawEnc.opt.width, h: rawEnc.opt.height } : null,
       fps: meter.fps,
       kbps: meter.kbps,
       capToRecvMs: meter.capToRecvMs,
       recvToEncMs: meter.recvToEncMs,
-      splitErrors: rawEnc?.splitErrors ?? 0,
-      dropped: rawEnc?.dropped ?? 0,
+      splitErrors: enc?.splitErrors ?? 0,
+      dropped: enc?.dropped ?? 0,
       viewers: viewers().length,
       jpegViewers: viewers().filter((c) => c.jpeg).length,
+      inputs: inputCount,
+      /** Cửa sổ đang chụp có ở trên cùng không (chụp cả màn hình thì luôn true). */
+      foreground: foreground(),
+      window: !!area?.hwnd,
+      requireForeground: !!active.requireForeground,
+      elevated: input.elevated,
     },
   };
 }
@@ -263,6 +437,7 @@ const host: Host = {
   pushRaw,
   inputSeq,
   clients,
+  input,
 };
 for (const a of APPS) a.init(host);
 
@@ -294,7 +469,7 @@ const server = Bun.serve({
   hostname: '127.0.0.1',
   port: PORT,
   idleTimeout: 0,
-  development: process.env.UNITYPILOT_DEV === '1',
+  development: process.env.PCPILOT_DEV === '1',
   routes: {
     '/': index,
     '/manifest.webmanifest': staticFile('manifest.webmanifest', 'application/manifest+json'),
@@ -318,7 +493,10 @@ const server = Bun.serve({
   websocket: {
     maxPayloadLength: 16 << 20,
     open(ws) {
-      clients.set(ws, { watch: false, needKey: true, viewW: 390, viewH: 844, quality: 'high', fps: 30, jpeg: false, aspect: 'free', seqMap: [] });
+      clients.set(ws, {
+        watch: false, needKey: true, viewW: 390, viewH: 844, quality: 'high', fps: 30, jpeg: false, aspect: 'free', app: '',
+        held: new Set(), buttons: new Set(), seqMap: [], mobile: { on: false, rotate: 'auto', scale: 0 },
+      });
       ws.send(JSON.stringify(statusEvent()));
       for (const a of APPS) a.onOpen?.(ws);
     },
@@ -334,6 +512,7 @@ const server = Bun.serve({
       switch (m.type) {
         case 'hello':
         case 'view': {
+          const wasWatching = c.watch;
           c.viewW = Number(m.w) || c.viewW;
           c.viewH = Number(m.h) || c.viewH;
           if (m.quality in QUALITY) c.quality = m.quality as Quality;
@@ -341,6 +520,13 @@ const server = Bun.serve({
           if (typeof m.jpeg === 'boolean') c.jpeg = m.jpeg;
           if (m.aspect === 'free' || m.aspect in ASPECT) c.aspect = m.aspect;
           if (typeof m.watch === 'boolean') c.watch = m.watch;
+          if (m.mobile && typeof m.mobile === 'object')
+            c.mobile = {
+              on: !!m.mobile.on,
+              rotate: ['auto', 'portrait', 'off'].includes(m.mobile.rotate) ? m.mobile.rotate : 'auto',
+              scale: Math.max(0, Math.min(500, Number(m.mobile.scale) || 0)),
+            };
+          if (wasWatching && !c.watch) releaseAll(c);
           // Đưa client này xuống cuối để nó quyết định cỡ khung (và app, nếu nó vừa vào xem).
           clients.delete(ws);
           clients.set(ws, c);
@@ -351,6 +537,12 @@ const server = Bun.serve({
         }
         case 'app':
           if (c.watch) activate(String(m.id));
+          break;
+        case 'key':
+        case 'text':
+        case 'mouse':
+        case 'focus':
+          if (c.watch) onInput(ws, c, m);
           break;
         case 'update':
           void selfUpdate(ws);
@@ -376,6 +568,7 @@ const server = Bun.serve({
     },
     close(ws) {
       const c = clients.get(ws);
+      releaseAll(c);
       clients.delete(ws);
       if (!c?.watch) return;
       // Chờ một chút: điện thoại tải lại trang hay đổi mạng thì khỏi dừng rồi chạy lại.
@@ -384,4 +577,4 @@ const server = Bun.serve({
   },
 });
 
-log(`unitypilot ${self.name} tại http://${server.hostname}:${server.port}, Unity nối vào 127.0.0.1:${UNITY_PORT}`);
+log(`pcpilot ${self.name} tại http://${server.hostname}:${server.port}, Unity nối vào 127.0.0.1:${UNITY_PORT}, tiến trình gửi phím 127.0.0.1:${INPUT_PORT}`);

@@ -5,7 +5,7 @@ using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-namespace UnityPilot.Unity
+namespace PcPilot.Unity
 {
     /// <summary>Thông tin đi kèm một khung hình.</summary>
     public struct FrameInfo
@@ -48,7 +48,7 @@ namespace UnityPilot.Unity
             if (Instance && Instance.running) return;
             // Bản cũ còn sót (project tắt domain reload: biến tĩnh sống qua các lần Play) thì dọn trước.
             Shutdown();
-            var go = new GameObject("UnityPilot Capture");
+            var go = new GameObject("PcPilot Capture");
             DontDestroyOnLoad(go);
             // Không đặt DontSave: object phải bị huỷ cùng Play Mode, không thì lần Play sau dùng lại bản có coroutine đã chết.
             go.hideFlags = HideFlags.HideInHierarchy;
@@ -100,7 +100,7 @@ namespace UnityPilot.Unity
             if (!screen || screen.width != sw || screen.height != sh)
             {
                 if (screen) screen.Release();
-                screen = new RenderTexture(sw, sh, 0, RenderTextureFormat.ARGB32) { name = "UnityPilot Screen" };
+                screen = new RenderTexture(sw, sh, 0, RenderTextureFormat.ARGB32) { name = "PcPilot Screen" };
             }
 
             // Vừa khung MaxWidth x MaxHeight, giữ tỉ lệ, cạnh chẵn (H.264 4:2:0 cần chẵn).
@@ -109,7 +109,7 @@ namespace UnityPilot.Unity
             if (!scaled || scaled.width != ow || scaled.height != oh)
             {
                 if (scaled) scaled.Release();
-                scaled = new RenderTexture(ow, oh, 0, RenderTextureFormat.ARGB32) { name = "UnityPilot Scaled" };
+                scaled = new RenderTexture(ow, oh, 0, RenderTextureFormat.ARGB32) { name = "PcPilot Scaled" };
             }
 
             var info = new FrameInfo

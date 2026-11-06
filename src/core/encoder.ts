@@ -1,5 +1,7 @@
-// Encode H.264 độ trễ thấp bằng ffmpeg (h264_nvenc nếu có card NVIDIA, không thì libx264). RawEncoder nhận khung RGBA
-// thô qua stdin (Unity tự chụp Game view rồi gửi sang); kiểu 'mjpeg' ra ảnh JPEG cho trình duyệt không có WebCodecs.
+// Encode H.264 độ trễ thấp bằng ffmpeg (h264_nvenc nếu có card NVIDIA, không thì libx264). Hai nguồn hình:
+// - RawEncoder: nhận khung RGBA thô qua stdin (Unity tự chụp Game view rồi gửi sang).
+// - ScreenCapture: ffmpeg tự chụp một vùng màn hình bằng Desktop Duplication (ddagrab), ở mức màn hình như OBS
+//   "Display Capture": không đụng tới tiến trình hay cửa sổ nào. Cửa sổ khác đè lên vùng chụp thì hình cũng thấy.
 // Đầu ra Annex B có AUD (NAL 9) mở đầu mỗi khung; cắt thành từng khung theo AUD, cộng một mốc "rảnh" 2 ms để khỏi
 // phải chờ AUD của khung sau (đỡ trễ thêm một khung).
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
@@ -10,7 +12,7 @@ export type EncoderKind = 'h264_nvenc' | 'libx264' | 'mjpeg';
 
 export interface FrameMeta {
   frameId: number;
-  /** Lúc chụp (giờ máy chủ, ms). */
+  /** Lúc chụp (giờ máy chủ, ms). Chụp màn hình bằng ffmpeg thì không biết, lấy lúc ffmpeg nhả khung. */
   captureMs: number;
   /** Số chạm cuối cùng nguồn hình đã thấy trước khi chụp khung này (0 = không biết). */
   inputSeq: number;
@@ -47,6 +49,19 @@ export function detectEncoder(ffmpeg: string): EncoderKind {
   const r = spawnSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=s=256x256:d=0.1',
     '-frames:v', '1', '-c:v', 'h264_nvenc', '-f', 'null', '-'], { timeout: 15000 });
   return r.status === 0 ? 'h264_nvenc' : 'libx264';
+}
+
+/** Kích thước từng màn hình theo thứ tự output của DXGI (chỉ số ddagrab dùng). */
+export function listOutputs(ffmpeg: string): { idx: number; w: number; h: number }[] {
+  const out: { idx: number; w: number; h: number }[] = [];
+  for (let idx = 0; idx < 6; idx++) {
+    const r = spawnSync(ffmpeg, ['-hide_banner', '-loglevel', 'verbose', '-filter_complex', `ddagrab=output_idx=${idx}`,
+      '-frames:v', '1', '-f', 'null', '-'], { timeout: 15000 });
+    const m = /Opened dxgi output \d+ with dimensions (\d+)x(\d+)/.exec(String(r.stderr));
+    if (!m) break;
+    out.push({ idx, w: Number(m[1]), h: Number(m[2]) });
+  }
+  return out;
 }
 
 /** Tham số encode H.264: baseline, không B-frame, keyframe mỗi ~1 giây (điện thoại vào giữa chừng có hình ngay). */
@@ -194,6 +209,70 @@ export class RawEncoder extends FfmpegStream {
     const meta = this.metas.shift();
     if (!meta) return;
     this.onFrame({ ...meta, key, data, encodedMs: Date.now() });
+  }
+}
+
+// --- Chụp vùng màn hình (ddagrab) -----------------------------------------------------------------
+export interface CaptureOptions {
+  ffmpeg: string;
+  kind: EncoderKind;
+  outputIdx: number;
+  /** Vùng chụp, toạ độ trong màn hình đó (pixel thật). */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Cỡ khung gửi đi. */
+  outW: number;
+  outH: number;
+  fps: number;
+  kbps: number;
+  /** Vẽ con trỏ chuột vào hình. */
+  cursor: boolean;
+  /**
+   * Màn hình đang xoay (0 ngang, 1 dọc, 2 ngang lật, 3 dọc lật). Desktop Duplication trả khung theo chiều quét gốc
+   * của màn hình (không xoay), nên x, y, w, h là toạ độ trong khung gốc đó và ffmpeg xoay lại trước khi thu nhỏ.
+   */
+  rotation: number;
+}
+
+/** Vùng (toạ độ trong màn hình đang xoay, cỡ mw × mh) → vùng trong khung gốc ddagrab trả về. */
+export function rawRect(r: { x: number; y: number; w: number; h: number }, mw: number, mh: number, rotation: number) {
+  if (rotation === 1) return { x: r.y, y: mw - (r.x + r.w), w: r.h, h: r.w };
+  if (rotation === 3) return { x: mh - (r.y + r.h), y: r.x, w: r.h, h: r.w };
+  if (rotation === 2) return { x: mw - (r.x + r.w), y: mh - (r.y + r.h), w: r.w, h: r.h };
+  return { ...r };
+}
+
+export class ScreenCapture extends FfmpegStream {
+  private nextId = 1;
+
+  constructor(readonly opt: CaptureOptions, private onFrame: (f: EncodedFrame) => void, onExit: (msg: string) => void) {
+    const src = `ddagrab=output_idx=${opt.outputIdx}:framerate=${opt.fps}:draw_mouse=${opt.cursor ? 1 : 0}` +
+      `:offset_x=${opt.x}:offset_y=${opt.y}:video_size=${opt.w}x${opt.h}`;
+    const turn = ['', ',transpose=clock', ',hflip,vflip', ',transpose=cclock'][opt.rotation] ?? '';
+    const [rw, rh] = opt.rotation % 2 ? [opt.h, opt.w] : [opt.w, opt.h]; // cỡ sau khi xoay lại
+    const scale = opt.outW === rw && opt.outH === rh ? '' : `,scale=${opt.outW}:${opt.outH}:flags=bilinear`;
+    const graph = `${src},hwdownload,format=bgra${turn}${scale},format=yuv420p`;
+    super(
+      opt.ffmpeg,
+      ['-hide_banner', '-loglevel', 'error', '-filter_complex', graph, ...h264Args(opt.kind, opt.fps, opt.kbps),
+        '-fps_mode', 'passthrough', '-flush_packets', '1', '-f', 'h264', '-'],
+      false,
+      onExit,
+    );
+  }
+
+  same(o: CaptureOptions) {
+    return (Object.keys(o) as (keyof CaptureOptions)[]).every((k) => o[k] === this.opt[k]);
+  }
+
+  protected emit(data: Uint8Array, key: boolean) {
+    const t = Date.now();
+    this.onFrame({
+      frameId: this.nextId++, captureMs: t, inputSeq: 0, width: this.opt.outW, height: this.opt.outH, receivedMs: t,
+      key, data, encodedMs: t,
+    });
   }
 }
 

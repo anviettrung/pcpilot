@@ -1,11 +1,11 @@
 {
-  "name": "com.unitypilot.unity",
+  "name": "com.pcpilot.unity",
   "version": "0.2.0",
-  "displayName": "UnityPilot",
-  "description": "Stream Game view lên điện thoại qua sidecar UnityPilot và nhận chạm về. Chỉ chạy trong Editor.",
+  "displayName": "PcPilot",
+  "description": "Stream Game view lên điện thoại qua sidecar PcPilot và nhận chạm về. Chỉ chạy trong Editor.",
   "unity": "6000.3",
   "dependencies": {
     "com.unity.inputsystem": "1.14.0"
   },
-  "author": { "name": "UnityPilot" }
+  "author": { "name": "PcPilot" }
 }

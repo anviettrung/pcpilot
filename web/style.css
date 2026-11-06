@@ -1,7 +1,7 @@
 [hidden] { display: none !important; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 :root {
-  --bar-h: 52px;
+  --bar-h: 52px; --kbd-h: 96px;
   --bg: #0b0d10; --panel: #16191e; --panel-2: #20242b; --line: #2c313a;
   --text: #e9ecf1; --muted: #8b93a1; --green: #3ecf75; --yellow: #f2c94c; --red: #f2555a; --accent: #4c8dff;
 }
@@ -20,7 +20,10 @@ button:active { transform: scale(.96); }
   display: flex; align-items: center; justify-content: center; background: #000;
 }
 body.compact #stage { inset: 0; }
-#video { touch-action: none; display: block; background: #0d0f12; }
+body.kbd-open #stage { bottom: calc(var(--bar-h) + var(--kbd-h) + env(safe-area-inset-bottom)); }
+body.compact.kbd-open #stage { bottom: var(--kbd-h); }
+#video { touch-action: none; display: block; background: #0d0f12; transform-origin: 0 0; will-change: transform; }
+#video.mouse { cursor: crosshair; }
 #touches { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .touch {
   position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%;
@@ -220,14 +223,126 @@ body.compact #bar { display: none; }
 /* --- Nhóm nút theo app trên thanh dưới --- */
 #bar .group { display: flex; align-items: center; gap: 6px; }
 #bar .group[hidden] { display: none !important; }
+#bar .icon.active { background: rgba(76, 141, 255, .2); border-color: var(--accent); color: #9cc0ff; }
+#bar .pill { flex: none; padding: 7px 12px; font-size: 13px; font-weight: 600; border-radius: 999px; white-space: nowrap; }
+#bar .pill.warn { background: var(--yellow); color: #2a2000; border: none; }
 
 /* --- Chọn app --- */
 #appSeg > button { flex-direction: row; justify-content: center; gap: 8px; min-width: 0; }
 #appSeg img, #appSeg svg { flex: none; width: 22px; height: 22px; border-radius: 6px; }
 #appSeg span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#monitorSeg { flex-wrap: wrap; }
+#monitorSeg > * { min-width: 30%; }
+#monitorSeg small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#windowList { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; max-height: 40vh; overflow-y: auto; }
+
+/* --- Bàn phím (remote màn hình) --- */
+#kbd {
+  position: fixed; left: 0; right: 0; bottom: calc(var(--bar-h) + env(safe-area-inset-bottom)); height: var(--kbd-h); z-index: 4;
+  display: flex; flex-direction: column; gap: 6px; padding: 6px 8px; background: var(--panel); border-top: 1px solid var(--line);
+}
+body.compact #kbd { bottom: 0; }
+.kbd-row { display: flex; gap: 6px; flex: 1; }
+.kbd-row button { flex: 1; min-width: 0; padding: 0 4px; font-size: 14px; font-weight: 600; border-radius: 9px; }
+.kbd-row button.on { background: rgba(76, 141, 255, .3); border-color: var(--accent); color: #fff; }
+#kbdType { flex: 2; }
+#kbdInput { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; font-size: 16px; }
+
+/* --- Bàn phím ảo --- */
+#pad { position: absolute; inset: 0; pointer-events: none; }
+#pad .ctl {
+  position: absolute; pointer-events: auto; touch-action: none; display: grid; place-items: center;
+  border-radius: 50%; color: #fff; font-weight: 600; font-size: 17px; text-shadow: 0 1px 2px rgba(0, 0, 0, .6);
+  background: rgba(20, 24, 30, .38); border: 2px solid rgba(255, 255, 255, .42);
+  -webkit-user-select: none; user-select: none;
+}
+#pad .ctl.size-s { font-size: 13px; }
+#pad .ctl.long { font-size: 12px; }
+#pad .ctl.down { background: rgba(76, 141, 255, .55); border-color: #fff; }
+#pad .dpad { background: rgba(20, 24, 30, .28); }
+#pad .dpad .ar { position: absolute; font-size: 15px; opacity: .75; pointer-events: none; }
+#pad .dpad .ar.on { color: #8fb6ff; opacity: 1; }
+#pad .dpad .u { top: 8%; }
+#pad .dpad .d { bottom: 8%; }
+#pad .dpad .l { left: 9%; }
+#pad .dpad .r { right: 9%; }
+#pad .dpad .knob {
+  width: 38%; height: 38%; border-radius: 50%; pointer-events: none;
+  background: rgba(255, 255, 255, .28); border: 2px solid rgba(255, 255, 255, .5);
+}
+#pad.editing .ctl { border-style: dashed; }
+/* Nút giữ: viền đôi. Đang giữ thì các nút khác ẩn, nút của bố cục giữ hiện chồng lên. */
+#pad .ctl.layer { border-style: double; border-width: 4px; }
+#pad .ctl.layer.down { background: rgba(242, 201, 76, .45); }
+#pad .ctl.off-layer { visibility: hidden; pointer-events: none; }
+#pad .ctl.in-layer { border-color: var(--yellow); }
+#pad .ctl.ghost { pointer-events: none; opacity: .45; border-style: dotted !important; }
+/* Góc trên trái: nút đổi chế độ (app có modeToggle) và nút đổi nhanh bố cục nút (khi có từ 2 bố cục). */
+#corner {
+  position: absolute; z-index: 5; top: 8px; left: calc(8px + env(safe-area-inset-left));
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none;
+}
+#corner > * { pointer-events: auto; }
+#modeBtn, #presetBtn {
+  display: flex; align-items: center; gap: 5px; padding: 6px 10px 6px 8px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .6);
+  background: rgba(20, 24, 30, .5); border: 1.5px solid rgba(255, 255, 255, .45); touch-action: manipulation;
+}
+#modeBtn svg, #presetBtn svg { width: 18px; height: 18px; flex: none; }
+#presetBtn span { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#modeBtn.mouse { background: rgba(76, 141, 255, .45); border-color: #9cc0ff; }
+#presetMenu {
+  display: flex; flex-direction: column; min-width: 150px; max-height: 60vh; overflow-y: auto; padding: 4px;
+  border-radius: 12px; background: rgba(22, 25, 30, .96); border: 1px solid var(--line);
+}
+#presetMenu button {
+  padding: 10px 12px; text-align: left; font-size: 15px; border: none; background: transparent; border-radius: 8px;
+}
+#presetMenu button.on { color: var(--yellow); font-weight: 600; background: var(--panel-2); }
+#pad.editing .ctl.selected { border-color: var(--yellow); border-style: solid; background: rgba(242, 201, 76, .25); }
+/* Thanh sửa bố cục: ở trên hoặc dưới (nút ⇅ đổi chỗ) để không che nút cần dời. Đang kéo nút thì thanh mờ, không chặn. */
+#editDock {
+  position: absolute; left: 8px; right: 8px; top: 8px; z-index: 6; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; transition: opacity .15s;
+}
+#editDock.bottom { top: auto; bottom: 8px; flex-direction: column-reverse; }
+#stage:has(#pad.dragging) #editDock { opacity: .2; }
+#stage:has(#pad.dragging) #editDock > * { pointer-events: none; }
+#editBar, #ctlEditor {
+  pointer-events: auto; max-width: 100%; display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; align-items: center;
+  padding: 6px 8px; border-radius: 14px; background: rgba(22, 25, 30, .94); border: 1px solid var(--line);
+}
+#editBar .sep { width: 1px; align-self: stretch; background: var(--line); }
+#editBar button, #ctlEditor button { padding: 6px 9px; font-size: 14px; white-space: nowrap; }
+#editBar .primary { background: var(--accent); border-color: var(--accent); font-weight: 600; }
+#editBar .danger { color: var(--red); }
+#presetSel {
+  font: inherit; font-size: 16px; font-weight: 600; color: var(--text); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 4px 6px; max-width: 150px;
+}
+#ctlEditor label { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
+#ctlEditor select, #ctlEditor input {
+  font: inherit; font-size: 16px; color: var(--text); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 4px 6px;
+}
+#ctlEditor select { max-width: 150px; }
+#ctlEditor input { width: 84px; }
+#ctlEditor .seg > * { padding: 6px 10px; font-size: 13px; }
+#ctlEditor .danger { color: var(--red); }
+
+/* --- Chế độ điện thoại --- */
+#sheet .sub { margin: 12px 2px 6px; font-size: 13px; color: var(--muted); }
+#sheet .note { margin: 10px 2px 0; font-size: 12px; color: var(--muted); }
+#mobileOpts.off { opacity: .45; }
+#scaleSeg { flex-wrap: wrap; }
+#scaleSeg > * { min-width: 18%; }
 
 #overlayAct {
   margin-top: 10px; padding: 12px 30px; font-size: 17px; font-weight: 600; border: none; border-radius: 999px;
   background: var(--green); color: #06210f;
 }
 #overlayAct.secondary { background: var(--panel-2); border: 1px solid var(--line); color: var(--text); font-size: 15px; padding: 9px 22px; }
+#rotateHint {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 4; padding: 8px 16px; border-radius: 999px;
+  background: rgba(242, 201, 76, .95); color: #2a2000; font-weight: 600; font-size: 14px; white-space: nowrap; pointer-events: none;
+}

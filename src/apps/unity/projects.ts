@@ -1,5 +1,5 @@
 // Danh sách project Unity trên máy này, mở và tắt Unity Editor.
-// Nguồn: thư mục trong `projectRoots` (unitypilot.json, quét 2 tầng) + các project Unity Hub đã biết (projects-v1.json).
+// Nguồn: thư mục trong `projectRoots` (pcpilot.json, quét 2 tầng) + các project Unity Hub đã biết (projects-v1.json).
 import { closeSync, cpSync, existsSync, openSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 
@@ -11,7 +11,7 @@ export interface ProjectInfo {
   editor: boolean;
   /** Đủ điều kiện stream: Unity 6000.3+ và có Input System. */
   streamable: boolean;
-  /** Đã gắn package UnityPilot (junction Assets/UnityPilot, hoặc khai com.unitypilot.unity trong manifest.json). */
+  /** Đã gắn package PcPilot (junction Assets/PcPilot, hoặc khai com.pcpilot.unity trong manifest.json). */
   linked: boolean;
   /** Unity đang mở project (Temp/UnityLockfile đang bị khoá). */
   open: boolean;
@@ -112,11 +112,11 @@ function streamable(path: string, version: string): boolean {
   }
 }
 
-/** Đã có package: junction Assets/UnityPilot (link-project.ps1) hoặc dòng trong Packages/manifest.json (cách cho team). */
+/** Đã có package: junction Assets/PcPilot (link-project.ps1) hoặc dòng trong Packages/manifest.json (cách cho team). */
 function isLinked(path: string): boolean {
-  if (existsSync(join(path, 'Assets', 'UnityPilot'))) return true;
+  if (existsSync(join(path, 'Assets', 'PcPilot'))) return true;
   try {
-    return readFileSync(join(path, 'Packages', 'manifest.json'), 'utf8').includes('"com.unitypilot.unity"');
+    return readFileSync(join(path, 'Packages', 'manifest.json'), 'utf8').includes('"com.pcpilot.unity"');
   } catch {
     return false;
   }
@@ -168,7 +168,7 @@ async function ps(script: string): Promise<{ code: number; out: string }> {
 
 const psq = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
-/** Gắn package UnityPilot (junction Assets/UnityPilot, không đổi gì trong git của project). */
+/** Gắn package PcPilot (junction Assets/PcPilot, không đổi gì trong git của project). */
 export async function linkProject(path: string): Promise<string> {
   const script = resolve(import.meta.dir, '..', '..', '..', 'scripts', 'link-project.ps1');
   const r = await ps(`& ${psq(script)} -Project ${psq(path)}`);
@@ -235,13 +235,13 @@ export function stashSceneBackups(path: string): string | null {
     return null;
   }
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
-  const dest = join(process.env.LOCALAPPDATA ?? join(path, '..'), 'unitypilot', 'scene-backups', `${basename(path)}-${stamp}`);
+  const dest = join(process.env.LOCALAPPDATA ?? join(path, '..'), 'pcpilot', 'scene-backups', `${basename(path)}-${stamp}`);
   cpSync(dir, dest, { recursive: true });
   rmSync(dir, { recursive: true, force: true });
   return dest;
 }
 
-/** Tắt Unity không qua package UnityPilot: đóng cửa sổ như bấm X (Unity có thể hỏi lưu scene), hoặc buộc tắt. */
+/** Tắt Unity không qua package PcPilot: đóng cửa sổ như bấm X (Unity có thể hỏi lưu scene), hoặc buộc tắt. */
 export async function closeEditorWindow(path: string, force: boolean): Promise<number> {
   const pids = await editorPids(path);
   for (const pid of pids) {

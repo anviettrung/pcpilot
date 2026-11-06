@@ -7,8 +7,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="UnityPilot">
-  <title>UnityPilot</title>
+  <meta name="apple-mobile-web-app-title" content="PcPilot">
+  <title>PcPilot</title>
   <link rel="manifest" href="./public/manifest.webmanifest">
   <link rel="icon" href="./public/icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="./public/apple-touch-icon.png">
@@ -18,7 +18,40 @@
   <main id="stage">
     <canvas id="video"></canvas>
     <div id="touches"></div>
+    <div id="pad"></div>
+    <div id="corner">
+      <button id="modeBtn" type="button" hidden></button>
+      <button id="presetBtn" type="button" hidden aria-haspopup="true"></button>
+      <div id="presetMenu" role="menu" hidden></div>
+    </div>
+    <div id="editDock">
+    <div id="editBar" hidden>
+      <select id="presetSel" aria-label="Bố cục đang sửa"></select>
+      <button type="button" id="presetNew" title="Bố cục mới (chép từ bố cục này)">+ Bố cục</button>
+      <button type="button" id="presetRename">Đổi tên</button>
+      <button type="button" id="presetDelete" class="danger">Xoá</button>
+      <span class="sep"></span>
+      <button type="button" id="addKey">+ Nút</button>
+      <button type="button" id="addDpad">+ D-pad</button>
+      <button type="button" id="addLayer" title="Giữ thì hiện bố cục khác, thả thì về">+ Nút giữ</button>
+      <button type="button" id="resetLayout">Mặc định</button>
+      <button type="button" id="editBarPos" aria-label="Dời thanh xuống dưới"></button>
+      <button type="button" id="doneEdit" class="primary">Xong</button>
+    </div>
+    <div id="ctlEditor" hidden>
+      <label>Phím <select id="edKey"></select></label>
+      <label>Nhãn <input id="edLabel" maxlength="8" placeholder="(theo phím)"></label>
+      <label>Khi giữ hiện <select id="edTarget"></select></label>
+      <div class="seg" id="edSize">
+        <button type="button" data-v="s">Nhỏ</button>
+        <button type="button" data-v="m">Vừa</button>
+        <button type="button" data-v="l">Lớn</button>
+      </div>
+      <button type="button" id="edDelete" class="danger">Xoá nút</button>
+    </div>
+    </div>
     <div id="pausedBadge" hidden>⏸ Tạm dừng</div>
+    <div id="rotateHint" hidden>↻ Xoay ngang điện thoại để chơi</div>
     <button id="updateBanner" type="button" hidden>Có bản mới · <b>Tải lại</b></button>
     <div id="overlay" hidden>
       <div class="spinner" id="spinner" hidden></div>
@@ -33,11 +66,51 @@
     <div id="toast" role="status" hidden></div>
   </main>
 
+  <div id="kbd" hidden>
+    <input id="kbdInput" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send" aria-label="Gõ chữ gửi sang máy">
+    <div class="kbd-row" id="kbdMods">
+      <button type="button" data-mod="ControlLeft">Ctrl</button>
+      <button type="button" data-mod="AltLeft">Alt</button>
+      <button type="button" data-mod="ShiftLeft">Shift</button>
+      <button type="button" data-mod="MetaLeft">Win</button>
+      <button type="button" data-key="Escape">Esc</button>
+      <button type="button" data-key="Tab">Tab</button>
+      <button type="button" data-key="Delete">Del</button>
+    </div>
+    <div class="kbd-row" id="kbdKeys">
+      <button type="button" data-key="ArrowLeft">◀</button>
+      <button type="button" data-key="ArrowUp">▲</button>
+      <button type="button" data-key="ArrowDown">▼</button>
+      <button type="button" data-key="ArrowRight">▶</button>
+      <button type="button" data-key="Backspace">⌫</button>
+      <button type="button" data-key="Enter">↵</button>
+      <button type="button" id="kbdType">Gõ chữ</button>
+    </div>
+  </div>
+
   <div id="bar">
     <button id="menuBtn" class="icon" type="button" aria-label="Cài đặt">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
     </button>
+    <div class="group" data-group="screen" hidden>
+      <button id="mouseBtn" class="icon" type="button" aria-label="Chạm vào hình là click chuột">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v4"/></svg>
+      </button>
+      <button id="kbdBtn" class="icon" type="button" aria-label="Bàn phím">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>
+      </button>
+      <button id="mobileBtn" class="icon" type="button" aria-label="Chế độ điện thoại: xoay màn hình máy, chữ to hơn" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>
+      </button>
+      <button id="editBtn" class="icon" type="button" aria-label="Sửa bố cục nút">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>
+      </button>
+    </div>
     <div id="info"><span id="dot"></span><span id="stat">…</span><span id="lat"></span></div>
+    <div class="group" data-group="screen" hidden>
+      <button id="zoomBtn" type="button" class="pill" hidden>1×</button>
+      <button id="focusBtn" type="button" class="pill warn" hidden>Đưa lên trên</button>
+    </div>
     <div class="group" data-group="unity" hidden>
       <button id="pauseBtn" class="icon" type="button" aria-label="Tạm dừng" hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>
@@ -63,6 +136,25 @@
     <div id="appRow" hidden>
       <h3>Ứng dụng</h3>
       <div class="seg" id="appSeg"></div>
+    </div>
+
+    <div class="section" data-section="desktop" hidden>
+      <h3 class="with-action">Nguồn <button id="windowsBtn" class="mini" type="button">Chọn cửa sổ</button></h3>
+      <div class="seg" id="monitorSeg"></div>
+      <div id="windowList" hidden></div>
+      <h3>Chế độ điện thoại</h3>
+      <label class="toggle"><input type="checkbox" id="mobileOn"><span>Đổi màn hình máy cho hợp điện thoại</span></label>
+      <div id="mobileOpts">
+        <div class="sub">Xoay màn hình máy</div>
+        <div class="seg" id="rotateSeg">
+          <button type="button" data-v="auto">Theo điện thoại<small>cầm dọc thì dọc</small></button>
+          <button type="button" data-v="portrait">Luôn dọc</button>
+          <button type="button" data-v="off">Không xoay</button>
+        </div>
+        <div class="sub">Cỡ chữ trên máy</div>
+        <div class="seg" id="scaleSeg"></div>
+        <p class="note" id="mobileNote"></p>
+      </div>
     </div>
 
     <div class="section" data-section="unity" hidden>
@@ -99,7 +191,7 @@
       <button id="fullBtn" type="button">Toàn màn hình</button>
       <button id="closeSheet" type="button">Đóng</button>
     </div>
-    <p id="installHint" hidden>Mẹo: bấm <b>Chia sẻ → Thêm vào MH chính</b> để mở UnityPilot toàn màn hình như một app.</p>
+    <p id="installHint" hidden>Mẹo: bấm <b>Chia sẻ → Thêm vào MH chính</b> để mở PcPilot toàn màn hình như một app.</p>
   </section>
 
   <div id="popup" hidden>

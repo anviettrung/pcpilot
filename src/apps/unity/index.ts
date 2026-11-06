@@ -19,7 +19,7 @@ import {
   stashSceneBackups,
 } from './projects';
 
-// Thư mục quét tìm project (unitypilot.json). Rỗng thì chỉ dùng các project Unity Hub đã biết.
+// Thư mục quét tìm project (pcpilot.json). Rỗng thì chỉ dùng các project Unity Hub đã biết.
 const ROOTS = Array.isArray(cfg.projectRoots) ? cfg.projectRoots.filter((r) => typeof r === 'string' && r) : [];
 
 interface Popup extends RawPopup {
@@ -31,6 +31,7 @@ interface Popup extends RawPopup {
 export class UnityApp implements App {
   id = 'unity';
   name = 'Unity';
+  source = 'raw' as const;
   private host!: Host;
   private link!: UnityLink;
   /** Project người xem chọn. Chưa chọn, hoặc project đã chọn đã tắt, thì xem Editor nối sau cùng. */
@@ -55,7 +56,7 @@ export class UnityApp implements App {
       onConnect: (ed) => {
         host.log(`Unity đã nối: ${ed.status?.project} (${ed.key})`);
         // Vừa mở project từ trang thì chuyển sang xem nó khi Unity nối xong. Nối lại sau domain reload (mỗi lần sửa
-        // code) thì không: người xem có thể đang ở app khác (nếu có thêm app).
+        // code) thì không: người xem có thể đang ở app khác.
         if (this.opening.has(ed.key) && ed.key === this.chosen.key) host.activate(this.id);
         this.opening.delete(ed.key);
         this.apply();
@@ -287,7 +288,7 @@ export class UnityApp implements App {
         }
         if (p.streamable && !p.linked) {
           await linkProject(p.path);
-          host.log(`đã gắn package UnityPilot vào ${p.path}`);
+          host.log(`đã gắn package PcPilot vào ${p.path}`);
         }
         await launchEditor(exe, p.path);
         host.log(`mở Unity ${p.version}: ${p.path}`);
@@ -305,7 +306,7 @@ export class UnityApp implements App {
           const n = await closeEditorWindow(p.path, !!m.force);
           if (!n) return host.notice(ws, `Không thấy Unity nào đang mở ${p.name}`, true);
           if (!m.force)
-            host.notice(ws, `Đã đóng cửa sổ Unity (project chưa gắn package UnityPilot). Nếu Unity hỏi lưu scene, hộp thoại sẽ hiện trên trang để trả lời.`);
+            host.notice(ws, `Đã đóng cửa sổ Unity (project chưa gắn package PcPilot). Nếu Unity hỏi lưu scene, hộp thoại sẽ hiện trên trang để trả lời.`);
         }
         host.log(`tắt Unity${m.force ? ' (buộc)' : ''}: ${p.path}`);
         this.closing.set(key, Date.now());

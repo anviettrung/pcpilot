@@ -1,7 +1,7 @@
 {
-  "name": "UnityPilot",
-  "short_name": "UnityPilot",
-  "description": "Chơi thử game Unity trong Editor từ điện thoại",
+  "name": "PcPilot",
+  "short_name": "PcPilot",
+  "description": "Remote màn hình máy tính từ điện thoại: cả màn hình, một cửa sổ, Unity Editor",
   "start_url": "/",
   "scope": "/",
   "display": "fullscreen",

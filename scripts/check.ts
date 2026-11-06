@@ -1,9 +1,9 @@
 export {};
 // Client WebSocket tối giản (không giải mã): đếm khung nhận được trong N giây, tuỳ chọn chạm một điểm.
-// Dùng để kiểm Unity còn stream khi bị thu nhỏ / mất focus (scripts/focus.ps1), và thử bấm nút UI trong game.
-//   bun run scripts/check.ts [giây] [x,y để chạm] [lệnh: play|stop|pause] [app: unity]
+// Dùng để kiểm nguồn hình còn stream khi bị thu nhỏ / mất focus, và thử bấm nút UI trong Unity.
+//   bun run scripts/check.ts [giây] [x,y để chạm] [lệnh: play|stop|pause] [app: desktop|unity]
 const [secs = '8', tap = '', cmd = '', app = ''] = process.argv.slice(2);
-const port = Number(process.env.UNITYPILOT_PORT ?? 7440);
+const port = Number(process.env.PCPILOT_PORT ?? 7440);
 const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
 ws.binaryType = 'arraybuffer';
 let frames = 0, keys = 0, bytes = 0;

@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    Trợ lý Win32 cho app Unity của UnityPilot: tìm hộp thoại (popup) của Unity Editor, chụp ảnh, bấm nút trong đó.
+    Trợ lý Win32 cho app Unity của PcPilot: tìm hộp thoại (popup) của Unity Editor, chụp ảnh, bấm nút trong đó.
 .DESCRIPTION
     Sidecar chạy tệp này một lần rồi giữ: mỗi dòng stdin là một lệnh JSON, mỗi dòng stdout là một kết quả JSON.
       {"op":"list"}                               -> {"ok":true,"list":[{hwnd,pid,title,cls,w,h,buttons:[{hwnd,text}]}]}

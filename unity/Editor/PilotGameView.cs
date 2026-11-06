@@ -3,7 +3,7 @@ using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
-namespace UnityPilot.Unity.Editor
+namespace PcPilot.Unity.Editor
 {
     /// <summary>
     /// Đặt độ phân giải Game view theo màn hình điện thoại. Unity không có API công khai cho việc này nên dùng
@@ -12,7 +12,7 @@ namespace UnityPilot.Unity.Editor
     /// </summary>
     static class PilotGameView
     {
-        const string Label = "UnityPilot";
+        const string Label = "PcPilot";
         static bool warned;
 
         public static void SetSize(int w, int h)
@@ -34,7 +34,7 @@ namespace UnityPilot.Unity.Editor
                     var s = gType.GetMethod("GetGameViewSize").Invoke(group, new object[] { i });
                     var st = s.GetType();
                     if ((string)st.GetProperty("baseText").GetValue(s) != Label) continue;
-                    // Dùng lại mục "UnityPilot", đổi cỡ tại chỗ.
+                    // Dùng lại mục "PcPilot", đổi cỡ tại chỗ.
                     st.GetProperty("width").SetValue(s, w);
                     st.GetProperty("height").SetValue(s, h);
                     index = i;
@@ -61,7 +61,7 @@ namespace UnityPilot.Unity.Editor
             }
             catch (Exception e)
             {
-                if (!warned) Debug.LogWarning($"UnityPilot: không đặt được cỡ Game view ({e.GetType().Name}: {e.Message})");
+                if (!warned) Debug.LogWarning($"PcPilot: không đặt được cỡ Game view ({e.GetType().Name}: {e.Message})");
                 warned = true;
             }
         }

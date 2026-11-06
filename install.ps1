@@ -1,10 +1,12 @@
 ﻿<#
 .SYNOPSIS
-    Cài UnityPilot cho máy hiện tại: Bun, ffmpeg, thư viện, Scheduled Task chạy lúc đăng nhập, `tailscale serve`.
+    Cài PcPilot cho máy hiện tại: Bun, ffmpeg, thư viện, hai Scheduled Task chạy lúc đăng nhập, `tailscale serve`.
 .DESCRIPTION
-    Chạy bằng install.cmd (nháy đúp) hoặc powershell -File install.ps1. Chạy lặp lại được, không hỏi gì, không mở cửa sổ, không cần
-    quyền admin. Task "UnityPilot Sidecar" (quyền thường) lo web, stream, Unity; chỉ khởi động lại khi kho sang
-    commit khác.
+    Chạy bằng install.cmd (nháy đúp) hoặc powershell -File install.ps1. Chạy lặp lại được, không hỏi gì, không mở cửa sổ.
+    - "PcPilot Sidecar" (quyền thường): web, stream, Unity. Chỉ khởi động lại khi kho sang commit khác.
+    - "PcPilot Input" (quyền cao nhất): gửi phím, chuột tới app chạy quyền admin. Đăng ký cần quyền admin một lần:
+      chạy tệp này bằng PowerShell "Run as administrator" (hoặc scripts/register-input-task.ps1 quyền admin). Chưa có
+      thì PcPilot vẫn chạy, chỉ không gửi phím, chuột tới được app quyền admin. Các lần sau chạy quyền thường được.
     Phần Unity (package UPM) gắn riêng vào từng project, xem README.md.
 #>
 param(
@@ -16,16 +18,23 @@ if (-not $UserHome) { $UserHome = [Environment]::GetFolderPath('UserProfile') }
 
 $Root = $PSScriptRoot
 $RepoRoot = $Root
-$TaskName = 'UnityPilot Sidecar'
-$StateDir = Join-Path $UserHome '.unitypilot'
-$StateFile = Join-Path $StateDir 'unitypilot-tree.txt'
-$Config = Get-Content -LiteralPath (Join-Path $Root 'unitypilot.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$TaskName = 'PcPilot Sidecar'
+$InputTaskName = 'PcPilot Input'
+$StateDir = Join-Path $UserHome '.pcpilot'
+$StateFile = Join-Path $StateDir 'pcpilot-tree.txt'
+$InputStateFile = Join-Path $StateDir 'pcpilot-input-tree.txt'
+$Config = Get-Content -LiteralPath (Join-Path $Root 'pcpilot.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $Port = [int]$Config.port
 $HttpsPort = [int]$Config.httpsPort
+$InputPort = [int]$Config.inputPort
+$TokenFile = Join-Path $env:LOCALAPPDATA 'pcpilot\input-token.txt'
 $Machines = Get-Content -LiteralPath (Join-Path $Root 'machines.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 
-function Say([string]$Text) { Write-Output "unitypilot: $Text" }
-function Fail([string]$Text) { Write-Output "unitypilot: $Text"; exit 1 }
+function Say([string]$Text) { Write-Output "pcpilot: $Text" }
+function Fail([string]$Text) { Write-Output "pcpilot: $Text"; exit 1 }
+
+$IsAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator)
 
 # git báo lỗi ra stderr (vd chưa commit); 5.1 với ErrorActionPreference = Stop coi đó là lỗi dừng script.
 function Git-Tree([string[]]$Paths) {
@@ -79,7 +88,7 @@ if (-not (Find-Ffmpeg)) {
 }
 
 # --- 2. Thư viện -----------------------------------------------------------------------------------
-$marker = Join-Path $Root 'node_modules\.unitypilot-installed'
+$marker = Join-Path $Root 'node_modules\.pcpilot-installed'
 $lock = Join-Path $Root 'bun.lock'
 $needInstall = -not (Test-Path -LiteralPath $marker) -or
     ((Get-Item -LiteralPath $lock).LastWriteTimeUtc -gt (Get-Item -LiteralPath $marker).LastWriteTimeUtc)
@@ -122,7 +131,7 @@ if (-not $same) {
         -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew `
         -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings `
-        -Description 'unitypilot: chơi thử game Unity từ điện thoại (kho unitypilot)' -Force | Out-Null
+        -Description 'pcpilot: remote màn hình, Unity từ điện thoại (kho pcpilot)' -Force | Out-Null
     Say "đã đăng ký Scheduled Task '$TaskName'"
 }
 
@@ -135,7 +144,7 @@ if (-not ($sidecarPid -and $taskRunning -and $tree -eq $lastTree)) {
     # Dừng cả task, vòng lặp run-sidecar.ps1 cũ lẫn sidecar đang giữ cổng (dừng task chỉ tắt conhost).
     if ($taskRunning) { Stop-ScheduledTask -TaskName $TaskName }
     Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" |
-        Where-Object { $_.CommandLine -like '*unitypilot*run-sidecar.ps1*-Name sidecar*' -and $_.ProcessId -ne $PID } |
+        Where-Object { $_.CommandLine -like '*pcpilot*run-sidecar.ps1*-Name sidecar*' -and $_.ProcessId -ne $PID } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     if ($sidecarPid) { Stop-Process -Id $sidecarPid -Force -ErrorAction SilentlyContinue }
     $deadline = (Get-Date).AddSeconds(10)
@@ -148,7 +157,40 @@ if (-not ($sidecarPid -and $taskRunning -and $tree -eq $lastTree)) {
     Say "sidecar đã chạy ở http://127.0.0.1:$Port"
 }
 
-# --- 4. Tailscale ---------------------------------------------------------------------------------
+# --- 4. Tiến trình gửi phím quyền admin -------------------------------------------------------------
+$inTask = Get-ScheduledTask -TaskName $InputTaskName -ErrorAction SilentlyContinue
+if ($IsAdmin -and (-not $inTask -or $inTask.State -ne 'Disabled')) {
+    & (Join-Path $Root 'scripts\register-input-task.ps1') -Bun $Bun -User $user
+    $inTask = Get-ScheduledTask -TaskName $InputTaskName -ErrorAction SilentlyContinue
+}
+if (-not $inTask) {
+    Say "chưa có task '$InputTaskName': phím, chuột chưa tới được app chạy quyền admin. Cài một lần bằng PowerShell 'Run as administrator':"
+    Say "  powershell -ExecutionPolicy Bypass -File `"$(Join-Path $Root 'install.ps1')`""
+} elseif ($inTask.State -ne 'Disabled') {
+    # Mã của tiến trình phụ đổi: nhờ nó tự thoát (quyền thường không tắt được tiến trình quyền admin), vòng lặp
+    # của nó chạy lại bằng mã mới.
+    $inputTree = Git-Tree @('src/elevated.ts', 'src/screen', 'src/core/config.ts', 'src/core/access.ts', 'shared')
+    $lastInput = if (Test-Path -LiteralPath $InputStateFile) { (Get-Content -LiteralPath $InputStateFile -Raw).Trim() } else { '' }
+    $inputPid = Get-ListenPid $InputPort
+    if ($inputPid -and $inputTree -ne $lastInput -and (Test-Path -LiteralPath $TokenFile)) {
+        try {
+            $tcp = New-Object Net.Sockets.TcpClient('127.0.0.1', $InputPort)
+            $w = New-Object IO.StreamWriter($tcp.GetStream())
+            $w.Write("{`"t`":`"$((Get-Content -LiteralPath $TokenFile -Raw).Trim())`"}`n{`"op`":`"quit`"}`n")
+            $w.Flush()
+            Start-Sleep -Milliseconds 300
+            $tcp.Close()
+        } catch {}
+        $deadline = (Get-Date).AddSeconds(20)
+        while ((Get-ListenPid $InputPort) -eq $inputPid -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 300 }
+        Say 'tiến trình gửi phím quyền admin chạy lại bằng mã mới'
+    } elseif (-not $inputPid -and (Get-ScheduledTask -TaskName $InputTaskName).State -ne 'Running') {
+        Start-ScheduledTask -TaskName $InputTaskName
+    }
+    if ($inputTree) { New-Item -ItemType Directory -Force -Path $StateDir | Out-Null; Set-Content -LiteralPath $InputStateFile -Value $inputTree }
+}
+
+# --- 5. Tailscale ---------------------------------------------------------------------------------
 $Mode = if ($Machines.access -and $Machines.access.mode) { [string]$Machines.access.mode } else { 'tailscale' }
 if ($Mode -ne 'tailscale') { Say "truy cập từ xa: chế độ '$Mode' (machines.json > access), bỏ qua tailscale serve"; exit 0 }
 $ts = (Get-Command tailscale -ErrorAction SilentlyContinue).Source

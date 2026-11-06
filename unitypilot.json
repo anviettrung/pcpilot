@@ -1,7 +1,0 @@
-{
-  "_doc": "Cổng của UnityPilot. port = web + WebSocket (127.0.0.1), httpsPort = cổng tailscale serve, unityPort = Unity Editor nối vào (TCP 127.0.0.1). projectRoots = thư mục quét tìm project Unity (quét 2 tầng), vd [\"D:/Projects\", \"C:/Users/<tên>/UnityProjects\"]; để [] thì chỉ dùng các project Unity Hub đã biết (projects-v1.json). Các project Unity Hub biết luôn được cộng thêm. Danh sách máy và chủ tài khoản lấy từ machines.json.",
-  "port": 7440,
-  "httpsPort": 8443,
-  "unityPort": 7441,
-  "projectRoots": []
-}

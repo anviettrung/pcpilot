@@ -4,7 +4,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
 using TouchPhase = UnityEngine.InputSystem.TouchPhase;
 
-namespace UnityPilot.Unity.Editor
+namespace PcPilot.Unity.Editor
 {
     /// <summary>
     /// Touchscreen ảo trong Input System. Chạm từ điện thoại (toạ độ 0..1, gốc trên trái) đổi sang pixel Game view
@@ -12,7 +12,7 @@ namespace UnityPilot.Unity.Editor
     /// </summary>
     static class PilotTouch
     {
-        const string DeviceName = "UnityPilotTouch";
+        const string DeviceName = "PcPilotTouch";
         static Touchscreen device;
 
         public static void ConfigureInput()

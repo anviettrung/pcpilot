@@ -1,4 +1,4 @@
-// Cấu hình chung của sidecar: cổng (unitypilot.json), danh sách máy và chủ tài khoản (machines.json).
+// Cấu hình chung của sidecar: cổng (pcpilot.json), danh sách máy và chủ tài khoản (machines.json).
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { accessMode, type AccessConfig } from './access';
@@ -10,14 +10,18 @@ export interface Config {
   port: number;
   httpsPort: number;
   unityPort: number;
+  /** Cổng tiến trình gửi phím quyền admin (src/elevated.ts) nghe, sidecar nối vào (TCP 127.0.0.1). */
+  inputPort: number;
   /** Thư mục quét tìm project Unity (2 tầng). Rỗng: chỉ các project Unity Hub đã biết. */
   projectRoots?: string[];
 }
 
-export const cfg = JSON.parse(readFileSync(resolve(ROOT, 'unitypilot.json'), 'utf8')) as Config;
-export const PORT = Number(process.env.UNITYPILOT_PORT ?? cfg.port);
-/** Cổng Unity Editor nối vào. Chạy thử sidecar thứ hai cạnh sidecar thật: UNITYPILOT_PORT=7451 UNITYPILOT_UNITY_PORT=7452. */
-export const UNITY_PORT = Number(process.env.UNITYPILOT_UNITY_PORT ?? cfg.unityPort);
+export const cfg = JSON.parse(readFileSync(resolve(ROOT, 'pcpilot.json'), 'utf8')) as Config;
+export const PORT = Number(process.env.PCPILOT_PORT ?? cfg.port);
+/** Cổng Unity Editor nối vào. Chạy thử sidecar thứ hai cạnh sidecar thật: PCPILOT_PORT=7451 PCPILOT_UNITY_PORT=7452 PCPILOT_INPUT_PORT=7453. */
+export const UNITY_PORT = Number(process.env.PCPILOT_UNITY_PORT ?? cfg.unityPort);
+/** Cổng tiến trình gửi phím quyền admin. Sidecar thử: thêm PCPILOT_INPUT_PORT=7453 để không nối nhầm vào tiến trình thật. */
+export const INPUT_PORT = Number(process.env.PCPILOT_INPUT_PORT ?? cfg.inputPort);
 
 export const machinesCfg = JSON.parse(readFileSync(resolve(ROOT, 'machines.json'), 'utf8')) as {
   owner: string;

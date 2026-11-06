@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const [label = 'probe', scene = '', seconds = '20', quality = 'high', fps = '30'] = process.argv.slice(2);
-const port = Number(process.env.UNITYPILOT_PORT ?? 7440);
+const port = Number(process.env.PCPILOT_PORT ?? 7440);
 const out = resolve(import.meta.dir, '..', 'shots');
 mkdirSync(out, { recursive: true });
 
@@ -14,7 +14,7 @@ const chrome = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Pro
   .find((p) => Bun.file(p).size > 0);
 if (!chrome) throw new Error('Không thấy Chrome hay Edge');
 const dbg = 9349;
-const profile = join(tmpdir(), 'unitypilot-probe-profile');
+const profile = join(tmpdir(), 'pcpilot-probe-profile');
 const proc = Bun.spawn([chrome, '--headless=new', '--hide-scrollbars', '--autoplay-policy=no-user-gesture-required',
   `--remote-debugging-port=${dbg}`, `--user-data-dir=${profile}`, 'about:blank'], { stdout: 'ignore', stderr: 'ignore' });
 
@@ -42,10 +42,10 @@ try {
 
   await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
   const q = new URLSearchParams({ app: 'unity', autotest: seconds, label, play: '1', ...(scene ? { scene } : {}), ...(process.env.PROBE_JPEG ? { jpeg: '1' } : {}), ...(process.env.PROBE_NOTAP ? { taps: '0' } : {}) });
-  await cdp('Runtime.evaluate', { expression: `localStorage.setItem('unitypilot:prefs', '${JSON.stringify({ quality, fps: Number(fps), aspect: process.env.PROBE_ASPECT ?? 'free' })}')` });
+  await cdp('Runtime.evaluate', { expression: `localStorage.setItem('pcpilot:prefs', '${JSON.stringify({ quality, fps: Number(fps), aspect: process.env.PROBE_ASPECT ?? 'free' })}')` });
   await cdp('Page.navigate', { url: `${process.env.PROBE_BASE ?? `http://127.0.0.1:${port}`}/?${q}` });
   await Bun.sleep(1000);
-  await cdp('Runtime.evaluate', { expression: `localStorage.setItem('unitypilot:prefs', '${JSON.stringify({ quality, fps: Number(fps), aspect: process.env.PROBE_ASPECT ?? 'free' })}')` });
+  await cdp('Runtime.evaluate', { expression: `localStorage.setItem('pcpilot:prefs', '${JSON.stringify({ quality, fps: Number(fps), aspect: process.env.PROBE_ASPECT ?? 'free' })}')` });
   await cdp('Page.reload');
 
   const deadline = Date.now() + (Number(seconds) + 60) * 1000;

@@ -1,6 +1,6 @@
 {
-  "name": "UnityPilot.Unity.Runtime",
-  "rootNamespace": "UnityPilot.Unity",
+  "name": "PcPilot.Unity.Runtime",
+  "rootNamespace": "PcPilot.Unity",
   "references": [],
   "includePlatforms": [],
   "excludePlatforms": [],

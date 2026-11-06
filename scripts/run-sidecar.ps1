@@ -1,7 +1,9 @@
 ﻿<#
 .SYNOPSIS
-    Chạy sidecar UnityPilot bằng Bun, ghi log, tự chạy lại khi nó thoát (kể cả khi tự cập nhật). Scheduled Task
-    "UnityPilot Sidecar" gọi tệp này qua `conhost.exe --headless` để không có cửa sổ: -Entry src/main.ts -Name sidecar
+    Chạy một tiến trình của PcPilot bằng Bun, ghi log, tự chạy lại khi nó thoát. Scheduled Task gọi tệp này qua
+    `conhost.exe --headless` để không có cửa sổ:
+    - "PcPilot Sidecar" (quyền thường): -Entry src/main.ts -Name sidecar
+    - "PcPilot Input" (quyền admin, gửi phím tới app quyền admin): -Entry src/elevated.ts -Name input
 #>
 param(
     [Parameter(Mandatory)][string]$Bun,

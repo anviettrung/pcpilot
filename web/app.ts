@@ -1,9 +1,9 @@
-// PWA UnityPilot: nhận H.264 qua WebSocket, giải mã bằng WebCodecs, vẽ lên canvas; thao tác gửi về theo app đang xem
-// (Unity: chạm đa điểm, Play/Stop, project, hộp thoại).
+// PWA PcPilot: nhận H.264 qua WebSocket, giải mã bằng WebCodecs, vẽ lên canvas; thao tác gửi về theo app đang xem
+// (chuột, bàn phím, bàn phím ảo cho remote màn hình và game; chạm ảo, Play/Stop cho Unity).
 import { WEB_APPS } from './apps';
 import {
-  $, S, actions, canvas, esc, isOpen, links, median, now, params, pct, prefs, r1, resolveInput,
-  sample, samples, savePrefs, send, sendTo, sortedLinks, stage, status, toast, useJpeg, type Link, type MachineInfo, type Overlay, type WebApp,
+  $, S, actions, applyZoom, canvas, esc, isOpen, links, median, now, params, pct, prefs, r1, resolveInput,
+  sample, samples, savePrefs, send, sendTo, sortedLinks, stage, status, toast, useJpeg, zoom, type Link, type MachineInfo, type Overlay, type WebApp,
 } from './core';
 
 const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true })!;
@@ -93,6 +93,7 @@ function sendView(type = 'view', l: Link = S.view) {
     quality: prefs.quality,
     fps: prefs.fps,
     aspect: prefs.aspect,
+    mobile: prefs.mobile,
     jpeg: useJpeg,
     // Vào xem máy này: xin lại app đã xem lần trước trên máy đó.
     // ?app=<id> trên địa chỉ trang thì xin app đó (script thử dùng).
@@ -151,6 +152,10 @@ let firstBuild = '';
 let clockOffset = 0; // giờ máy chủ - giờ máy này
 let bestRtt = Infinity;
 let lastApp = '';
+const REASON: Record<string, string> = {
+  notForeground: 'Cửa sổ không ở trên cùng trên PC: chưa gửi',
+  focusFailed: 'Không đưa được cửa sổ lên trên',
+};
 
 function onJson(l: Link, m: any) {
   for (const a of WEB_APPS) if (a.onJson?.(l, m)) return;
@@ -165,12 +170,16 @@ function onJson(l: Link, m: any) {
       if (m.app !== lastApp) {
         if (lastApp) appOf(lastApp).enter?.(false);
         lastApp = m.app;
+        zoom.k = 1;
+        applyZoom();
         appOf(m.app).enter?.(true);
       }
       render();
     }
   } else if (m.type === 'notice') {
     toast(`${m.machine}: ${m.text}`, m.error);
+  } else if (m.type === 'inputResult') {
+    if (!m.ok) toast(REASON[m.reason] ?? 'Lỗi gửi thao tác', true);
   } else if (m.type === 'pong') {
     if (l !== S.view) return;
     const t1 = now();
@@ -304,6 +313,7 @@ function fit() {
   const k = Math.min(r.width / canvas.width, r.height / canvas.height);
   canvas.style.width = `${Math.floor(canvas.width * k)}px`;
   canvas.style.height = `${Math.floor(canvas.height * k)}px`;
+  applyZoom();
 }
 
 let viewTimer = 0;
@@ -355,7 +365,7 @@ for (const [ev, ph] of [['pointerdown', 'down'], ['pointermove', 'move'], ['poin
     showTouch(e, ph);
   });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-// Rời trang hay ẩn app: nhả hết chạm đang giữ, không để kẹt trong game.
+// Rời trang hay ẩn app: nhả hết, không để phím kẹt trên PC.
 const releaseAll = () => current().releaseAll?.();
 document.addEventListener('visibilitychange', () => document.visibilityState !== 'visible' && releaseAll());
 addEventListener('blur', releaseAll);
@@ -483,6 +493,7 @@ function render() {
   if (!isOpen()) o = { title: 'Mất kết nối', text: `Đang nối lại máy ${S.view?.name || machine}…`, spin: true, pick: links.length > 1 ? 'Chọn máy khác' : '' };
   else if (!st) o = { title: 'Đang kết nối…', spin: true };
   else if (!st.stream?.ffmpeg) o = { title: 'Thiếu ffmpeg', text: `Máy ${machine} chưa cài ffmpeg (winget install Gyan.FFmpeg).` };
+  else if (useJpeg && app.id !== 'unity') o = { title: 'Trình duyệt không hỗ trợ', text: 'Cần WebCodecs (Chrome, Safari iOS 16.4+).' };
   else {
     o = app.overlay?.(st, a) ?? null;
     if (!o && !hasFrames) o = { title: 'Đang chờ hình…', text: st.stream?.error ?? '', spin: true };
@@ -517,13 +528,18 @@ function render() {
   renderMachineSeg();
   renderAppSeg(st);
   app.sheet?.(st, a);
+  const info: string[] = [];
+  if (st?.stream && !st.stream.elevated && app.group === 'screen')
+    info.push('Chưa có tiến trình gửi phím quyền admin: app chạy quyền admin sẽ không nhận phím, chuột (chạy install.ps1 quyền admin một lần để cài).');
   const more = app.info?.(a);
-  $('appInfo').innerHTML = `<b>${esc(machine)} · ${esc(app.label?.(a) ?? a.name ?? '')}</b>${more ? ` · ${esc(more)}` : ''}`;
+  $('appInfo').innerHTML =
+    `<b>${esc(machine)} · ${esc(app.label?.(a) ?? a.name ?? '')}</b>${more ? ` · ${esc(more)}` : ''}` +
+    info.map((x) => `<br><span class="warn">${esc(x)}</span>`).join('');
   if (st?.stream && $<HTMLDetailsElement>('metricsBox').open) {
     const s = st.stream;
     const rows: [string, string][] = [
       ...(samples.input.length ? ([['Chạm → hiện', `${r1(inp)} ms (${samples.input.length} mẫu)`]] as [string, string][]) : []),
-      ['Chụp → hiện', `${r1(v)} ms · p90 ${r1(pct(samples.video, 0.9))}`],
+      [app.id === 'unity' ? 'Chụp → hiện' : 'Encode → hiện', `${r1(v)} ms · p90 ${r1(pct(samples.video, 0.9))}`],
       ['Mạng · RTT', `${r1(median(samples.net))} · ${r1(median(samples.rtt))} ms`],
       ['Giải mã', `${r1(median(samples.decode))} ms`],
       ...(app.metrics?.(st) ?? []),
@@ -531,6 +547,7 @@ function render() {
       ['Khung', s.target ? `${s.target.w}×${s.target.h}` : '–'],
       ['Luồng', `${s.fps} fps · ${(s.kbps / 1000).toFixed(1)} Mbps`],
       ['Bỏ khung', `${s.dropped} · cắt sai ${s.splitErrors}`],
+      ['Gửi phím', s.elevated ? 'quyền admin' : 'quyền thường'],
     ];
     $('metrics').innerHTML = rows.map(([k, val]) => `<dt>${k}</dt><dd>${val}</dd>`).join('');
   }

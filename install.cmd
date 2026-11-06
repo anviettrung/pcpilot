@@ -1,5 +1,5 @@
 @echo off
-REM Cai UnityPilot cho may nay. Nhap dup la chay, chay lai bao nhieu lan cung duoc.
+REM Cai PcPilot cho may nay. Nhap dup la chay, chay lai bao nhieu lan cung duoc.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" %*
 set "RC=%ERRORLEVEL%"
 echo.

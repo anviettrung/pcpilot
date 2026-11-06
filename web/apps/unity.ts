@@ -51,7 +51,7 @@ function projectState(p: any): { text: string; cls: string; btn?: [string, strin
   if (p.closing) return { text: 'Đang tắt…', cls: 'busy', btn: ['force', 'Buộc tắt'] };
   if (p.bridged) return { text: (p.playing ? 'Đang Play' : 'Đang mở') + scene + (p.dirty ? ' · chưa lưu' : ''), cls: p.playing ? 'play' : 'open', btn: ['close', 'Tắt'] };
   if (p.open && p.opening && p.streamable) return { text: 'Unity đang tải project…', cls: 'busy', btn: ['close', 'Tắt'] };
-  if (p.open) return { text: p.streamable ? 'Đang mở · chưa nối UnityPilot' : 'Đang mở · không stream được', cls: 'open dim', btn: ['close', 'Tắt'] };
+  if (p.open) return { text: p.streamable ? 'Đang mở · chưa nối PcPilot' : 'Đang mở · không stream được', cls: 'open dim', btn: ['close', 'Tắt'] };
   if (p.opening) return { text: 'Đang khởi động Unity…', cls: 'busy', btn: ['force', 'Buộc tắt'] };
   if (!p.editor) return { text: `Chưa cài Unity ${esc(p.version)}`, cls: 'off' };
   return { text: `Unity ${esc(p.version)}${p.streamable ? '' : ' · không stream'}`, cls: 'off', btn: ['open', 'Mở'] };
@@ -117,7 +117,7 @@ async function onProjectClick(e: Event) {
     else
       mode = await ask(
         `Tắt ${p.name}?`,
-        `Project chưa nối UnityPilot: sẽ đóng cửa sổ Unity như bấm X. Nếu Unity hỏi lưu scene, hộp thoại sẽ hiện ở đây để trả lời.`,
+        `Project chưa nối PcPilot: sẽ đóng cửa sổ Unity như bấm X. Nếu Unity hỏi lưu scene, hộp thoại sẽ hiện ở đây để trả lời.`,
         [
           ['window', 'Đóng cửa sổ', 'primary'],
           ['force', 'Buộc tắt', 'danger'],

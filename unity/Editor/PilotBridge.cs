@@ -10,10 +10,10 @@ using UnityEditor.Compilation;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
-namespace UnityPilot.Unity.Editor
+namespace PcPilot.Unity.Editor
 {
     /// <summary>
-    /// Nối Unity Editor với sidecar UnityPilot ở 127.0.0.1 (TCP). Mỗi lần domain reload thì nối lại.
+    /// Nối Unity Editor với sidecar PcPilot ở 127.0.0.1 (TCP). Mỗi lần domain reload thì nối lại.
     /// Gói tin: u32 độ dài (phần sau nó) | u8 loại | nội dung.
     ///   Unity → sidecar: 1 = JSON trạng thái, 2 = khung hình RGBA.
     ///   sidecar → Unity: 10 = JSON lệnh.
@@ -46,7 +46,7 @@ namespace UnityPilot.Unity.Editor
         {
             if (Application.isBatchMode) return;
             running = true;
-            ioThread = new Thread(IoLoop) { IsBackground = true, Name = "UnityPilot IO" };
+            ioThread = new Thread(IoLoop) { IsBackground = true, Name = "PcPilot IO" };
             ioThread.Start();
 
             PilotCapture.WantFrame = () => connected && streaming;
@@ -88,7 +88,7 @@ namespace UnityPilot.Unity.Editor
                         var stream = c.GetStream();
                         connected = true;
                         lastStatus = null; // gửi lại trạng thái đầy đủ
-                        var reader = new Thread(() => ReadLoop(stream)) { IsBackground = true, Name = "UnityPilot Read" };
+                        var reader = new Thread(() => ReadLoop(stream)) { IsBackground = true, Name = "PcPilot Read" };
                         reader.Start();
                         while (running && c.Connected && reader.IsAlive)
                         {
@@ -205,8 +205,8 @@ namespace UnityPilot.Unity.Editor
         // được); giữ bằng SessionState vì vào Play có thể domain reload.
         static bool dirtyInEdit
         {
-            get => SessionState.GetBool("UnityPilot.dirty", false);
-            set => SessionState.SetBool("UnityPilot.dirty", value);
+            get => SessionState.GetBool("PcPilot.dirty", false);
+            set => SessionState.SetBool("PcPilot.dirty", value);
         }
         static bool ScenesDirty()
         {
@@ -265,14 +265,14 @@ namespace UnityPilot.Unity.Editor
         // Đang Play thì thoát Play trước (có thể domain reload), nên cờ giữ bằng SessionState.
         static string pendingQuit
         {
-            get => SessionState.GetString("UnityPilot.pendingQuit", "");
-            set => SessionState.SetString("UnityPilot.pendingQuit", value);
+            get => SessionState.GetString("PcPilot.pendingQuit", "");
+            set => SessionState.SetString("PcPilot.pendingQuit", value);
         }
         // Sống qua domain reload: Play bấm từ điện thoại mà phải compile trước thì vẫn Play sau khi reload xong.
         static bool pendingPlay
         {
-            get => SessionState.GetBool("UnityPilot.pendingPlay", false);
-            set => SessionState.SetBool("UnityPilot.pendingPlay", value);
+            get => SessionState.GetBool("PcPilot.pendingPlay", false);
+            set => SessionState.SetBool("PcPilot.pendingPlay", value);
         }
 
         static void Tick()
@@ -285,7 +285,7 @@ namespace UnityPilot.Unity.Editor
             while (inbox.TryDequeue(out var json))
             {
                 try { Handle(JsonUtility.FromJson<Command>(json)); }
-                catch (Exception e) { Debug.LogWarning($"UnityPilot: lệnh lỗi {json}: {e.Message}"); }
+                catch (Exception e) { Debug.LogWarning($"PcPilot: lệnh lỗi {json}: {e.Message}"); }
             }
             if (connected && EditorApplication.timeSinceStartup >= nextStatusAt)
             {
@@ -340,7 +340,7 @@ namespace UnityPilot.Unity.Editor
                     // Không có mode mà scene đang có thay đổi chưa lưu: không tắt, để người dùng chọn lưu hay bỏ.
                     if (string.IsNullOrEmpty(c.name) && AnySceneDirty())
                     {
-                        Debug.LogWarning("UnityPilot: scene có thay đổi chưa lưu, không tắt Unity");
+                        Debug.LogWarning("PcPilot: scene có thay đổi chưa lưu, không tắt Unity");
                         break;
                     }
                     pendingPlay = false;
@@ -355,7 +355,7 @@ namespace UnityPilot.Unity.Editor
                         var path = AssetDatabase.GUIDToAssetPath(g);
                         if (Path.GetFileNameWithoutExtension(path) != c.name) continue;
                         // Không bật hộp thoại "lưu scene?" khi người dùng không ngồi trước máy: scene đang sửa dở thì thôi.
-                        if (EditorSceneManager.GetActiveScene().isDirty) Debug.LogWarning("UnityPilot: scene đang có thay đổi chưa lưu, không đổi scene");
+                        if (EditorSceneManager.GetActiveScene().isDirty) Debug.LogWarning("PcPilot: scene đang có thay đổi chưa lưu, không đổi scene");
                         else EditorSceneManager.OpenScene(path);
                         break;
                     }
@@ -371,7 +371,7 @@ namespace UnityPilot.Unity.Editor
             quitStarted = true;
             // Giữ pendingQuit tới lúc thoát: gói trạng thái cuối mang quitting = true, sidecar biết là tắt chứ không phải reload.
             var mode = pendingQuit;
-            Debug.Log($"UnityPilot: tắt Unity từ xa ({mode})");
+            Debug.Log($"PcPilot: tắt Unity từ xa ({mode})");
             if (mode == "save")
             {
                 EditorSceneManager.SaveOpenScenes();

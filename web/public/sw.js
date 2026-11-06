@@ -1,6 +1,6 @@
-// Service worker UnityPilot: lưu vỏ trang (HTML, JS, CSS, icon) để mở được app từ màn hình chính ngay cả khi máy chủ
+// Service worker PcPilot: lưu vỏ trang (HTML, JS, CSS, icon) để mở được app từ màn hình chính ngay cả khi máy chủ
 // của trang đang tắt; trang sau đó tự nối tới sidecar các máy còn lại. Luôn lấy bản mới từ mạng trước.
-const CACHE = 'unitypilot-shell-v1';
+const CACHE = 'pcpilot-shell-v1';
 
 self.addEventListener('install', () => self.skipWaiting());
 // Bỏ bộ đệm của bản trước (tên CACHE khác).

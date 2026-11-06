@@ -1,4 +1,4 @@
-// Cổng TCP cho Unity Editor (package com.unitypilot.unity) nối vào. Chỉ nghe ở 127.0.0.1.
+// Cổng TCP cho Unity Editor (package com.pcpilot.unity) nối vào. Chỉ nghe ở 127.0.0.1.
 // Gói tin: u32 độ dài phần sau | u8 loại | nội dung (xem unity/Editor/PilotBridge.cs).
 // Nhiều Editor (nhiều project) nối cùng lúc được; mỗi Editor nhận diện bằng đường dẫn project trong gói trạng thái.
 import type { Socket } from 'bun';

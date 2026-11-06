@@ -20,7 +20,7 @@ export interface MachineInfo {
   /** Địa chỉ HTTPS của sidecar máy đó (url khai báo, hoặc địa chỉ tailnet). Không có: chỉ dùng tại chỗ. */
   url?: string;
 }
-const PREF = 'unitypilot:prefs';
+const PREF = 'pcpilot:prefs';
 export const prefs: {
   quality: string;
   fps: number;
@@ -36,10 +36,17 @@ export const prefs: {
   httpsPort?: number;
   /** App xem lần trước trên từng máy. */
   apps?: Record<string, string>;
+  /** Chế độ chuột (chạm vào hình = click) theo từng app. */
+  mouse?: Record<string, boolean>;
+  /** Thanh sửa bố cục nút nằm dưới đáy hình (mặc định ở trên). */
+  editBarBottom?: boolean;
+  /** Chế độ điện thoại của app Màn hình (gửi kèm lệnh view, sidecar đổi màn hình máy theo). */
+  mobile: { on: boolean; rotate: 'auto' | 'portrait' | 'off'; scale: number };
 } = {
   quality: 'high',
   fps: 30,
   aspect: 'free',
+  mobile: { on: false, rotate: 'auto', scale: 200 },
   ...JSON.parse(localStorage.getItem(PREF) ?? '{}'),
 };
 export const savePrefs = () => localStorage.setItem(PREF, JSON.stringify(prefs));
@@ -122,9 +129,9 @@ export interface Overlay {
   spin?: boolean;
   /** Nút Play to giữa màn hình (Unity). */
   play?: boolean;
-  /** Nút mở bảng chọn (chọn project). */
+  /** Nút mở bảng chọn (chọn project, chọn cửa sổ). */
   pick?: string;
-  /** Nút việc riêng của app. */
+  /** Nút việc riêng của app (vd mở nhanh một game). */
   action?: { label: string; run: () => void; secondary?: boolean };
 }
 
@@ -155,7 +162,7 @@ export interface WebApp {
   view?(): object;
   /** Chạm lên hình. */
   pointer?(e: PointerEvent, ph: 'down' | 'move' | 'up' | 'cancel'): void;
-  /** Rời trang, ẩn app, mất focus: nhả hết chạm đang giữ. */
+  /** Rời trang, ẩn app, mất focus: nhả hết phím, chuột đang giữ. */
   releaseAll?(): void;
   /** Hàng thông số đo riêng. */
   metrics?(st: any): [string, string][];
@@ -198,7 +205,26 @@ export function ask(title: string, text: string, buttons: [string, string, strin
   });
 }
 
-/** Toạ độ chạm trên hình (0..1, gốc trên trái). */
+/** Phóng to hình (remote màn hình): tỉ lệ và độ dời, đặt bằng CSS transform lên canvas. */
+export const zoom = { k: 1, x: 0, y: 0 };
+export function applyZoom() {
+  const r = stage.getBoundingClientRect();
+  const cw = canvas.offsetWidth, ch = canvas.offsetHeight;
+  if (zoom.k <= 1.01) {
+    zoom.k = 1;
+    zoom.x = zoom.y = 0;
+  } else {
+    // Không cho kéo hình ra khỏi khung: mép hình không vào quá mép sân khấu.
+    const bx = (r.width - cw) / 2, by = (r.height - ch) / 2; // vị trí canvas khi chưa phóng
+    const maxX = -bx, minX = r.width - bx - cw * zoom.k;
+    const maxY = -by, minY = r.height - by - ch * zoom.k;
+    zoom.x = minX > maxX ? (minX + maxX) / 2 : Math.min(maxX, Math.max(minX, zoom.x));
+    zoom.y = minY > maxY ? (minY + maxY) / 2 : Math.min(maxY, Math.max(minY, zoom.y));
+  }
+  canvas.style.transform = zoom.k === 1 ? '' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.k})`;
+}
+
+/** Toạ độ chạm trên hình (0..1, gốc trên trái), đã tính phần phóng to. */
 export function videoPoint(e: { clientX: number; clientY: number }) {
   const r = canvas.getBoundingClientRect();
   return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
