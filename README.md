@@ -8,8 +8,7 @@ chạm đa điểm thẳng vào game. Từ điện thoại còn mở/tắt proje
 Mở Claude Code (hoặc AI agent khác chạy được lệnh trên máy) ở một thư mục bất kỳ trên PC, dán prompt sau:
 
 ````text
-Cài UnityPilot cho tôi trên máy Windows này. Mã nguồn: https://github.com/anviettrung/unitypilot (private, tôi đã
-được cấp quyền đọc). Làm lần lượt, mỗi bước kiểm tra kết quả rồi mới sang bước sau:
+Cài UnityPilot cho tôi trên máy Windows này. Mã nguồn: https://github.com/anviettrung/unitypilot. Làm lần lượt, mỗi bước kiểm tra kết quả rồi mới sang bước sau:
 
 1. Kiểm tra có git và GitHub CLI (gh) đã đăng nhập (`gh auth status`). Thiếu gì thì cài bằng winget nếu được; việc
    cần tôi đăng nhập thì dừng lại chỉ tôi cách làm.
