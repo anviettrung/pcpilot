@@ -17,12 +17,27 @@ const current = () => appOf(status()?.app);
 
 // --- WebSocket ------------------------------------------------------------------------------------
 const homeUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
-const isLocalPage = !location.hostname.endsWith('.ts.net');
+const isLocalPage = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+const sameOrigin = (u?: string) => {
+  try {
+    return !!u && new URL(u).origin === location.origin;
+  } catch {
+    return false;
+  }
+};
+/** Máy đang phục vụ trang (theo url khai báo, hoặc tên máy trong tailnet). */
+const pageMachine = (list?: MachineInfo[]) =>
+  list?.find((m) => sameOrigin(m.url)) ??
+  (location.hostname.endsWith('.ts.net') ? list?.find((m) => m.host === location.hostname.split('.')[0]) : undefined);
 
 function machineUrl(m: MachineInfo): string {
   if (isLocalPage && m.name === prefs.home) return homeUrl;
-  const suffix = isLocalPage ? prefs.tailnet : location.hostname.split('.').slice(1).join('.');
-  if (!suffix) return '';
+  if (sameOrigin(m.url)) return homeUrl;
+  // Sidecar báo sẵn địa chỉ HTTPS của từng máy (url khai báo, hoặc địa chỉ tailnet).
+  if (m.url) return m.url.replace(/^http/, 'ws') + '/ws';
+  // Bản sidecar cũ không gửi url: tự ghép địa chỉ tailnet.
+  const suffix = isLocalPage ? prefs.tailnet : location.hostname.endsWith('.ts.net') ? location.hostname.split('.').slice(1).join('.') : '';
+  if (!suffix || !m.host) return '';
   return `wss://${m.host}.${suffix}:${prefs.httpsPort ?? 8443}/ws`;
 }
 
@@ -600,7 +615,7 @@ Object.assign(actions, {
 for (const a of WEB_APPS) a.init();
 
 // Máy chủ của trang trước, rồi các máy đã biết từ lần trước (máy chủ có tắt thì vẫn vào được máy kia).
-S.view = ensureLink(homeUrl, isLocalPage ? prefs.home : prefs.machines?.find((m) => m.host === location.hostname.split('.')[0])?.name);
+S.view = ensureLink(homeUrl, isLocalPage ? prefs.home : pageMachine(prefs.machines)?.name);
 for (const m of prefs.machines ?? []) {
   const url = machineUrl(m);
   if (url) ensureLink(url, m.name);

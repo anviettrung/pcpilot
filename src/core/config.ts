@@ -1,6 +1,7 @@
 // Cấu hình chung của sidecar: cổng (unitypilot.json), danh sách máy và chủ tài khoản (machines.json).
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { accessMode, type AccessConfig } from './access';
 
 export const ROOT = resolve(import.meta.dir, '..', '..');
 export const REPO = ROOT;
@@ -20,8 +21,12 @@ export const UNITY_PORT = Number(process.env.UNITYPILOT_UNITY_PORT ?? cfg.unityP
 
 export const machinesCfg = JSON.parse(readFileSync(resolve(ROOT, 'machines.json'), 'utf8')) as {
   owner: string;
-  machines: { name: string; computer: string; host: string }[];
+  /** Cách điện thoại vào sidecar: tailscale | cloudflare | proxy | local (xem src/core/access.ts, README). */
+  access?: AccessConfig;
+  /** url: địa chỉ HTTPS của sidecar máy đó khi không dùng Tailscale (vd https://pc1-unity.example.com). */
+  machines: { name: string; computer: string; host?: string; url?: string }[];
 };
+export const ACCESS = accessMode(machinesCfg.access);
 const computer = (process.env.COMPUTERNAME ?? '').toUpperCase();
 export const self = machinesCfg.machines.find((m) => m.computer.toUpperCase() === computer) ?? { name: computer || '?', computer, host: '' };
 
@@ -29,7 +34,7 @@ export const log = (...a: unknown[]) => console.log(new Date().toISOString().sli
 
 // Đuôi tên miền tailnet (vd tailxxxx.ts.net): trang mở từ localhost vẫn biết địa chỉ sidecar máy khác.
 export const net = { tailnet: '' };
-(async () => {
+if (ACCESS === 'tailscale') (async () => {
   try {
     const ts = Bun.which('tailscale') ?? 'C:\\Program Files\\Tailscale\\tailscale.exe';
     const p = Bun.spawn([ts, 'status', '--json'], { stdout: 'pipe', stderr: 'ignore', windowsHide: true });

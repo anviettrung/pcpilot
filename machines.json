@@ -1,8 +1,14 @@
 {
-  "_doc": "Danh sách máy cho UnityPilot. owner = email tài khoản Tailscale của bạn (chỉ tài khoản này vào được). computer = $env:COMPUTERNAME, host = tên máy trong tailnet (trùng tên đặt bằng tailscale set --hostname), name = tên ngắn hiện trên trang. Không chứa bí mật.",
+  "_doc": "Danh sách máy cho UnityPilot. owner = email bạn dùng để đăng nhập lớp truy cập từ xa (tài khoản Tailscale, email Cloudflare Access...); chỉ người này vào được từ xa. computer = $env:COMPUTERNAME, name = tên ngắn hiện trên trang, host = tên máy trong tailnet (chế độ tailscale), url = địa chỉ HTTPS của sidecar máy đó khi dùng Cloudflare Tunnel hay proxy khác (vd https://pc1-unity.example.com). Không chứa bí mật.",
   "owner": "you@example.com",
+  "access": {
+    "_doc": "Cách điện thoại vào sidecar. mode: tailscale (mặc định, dùng tailscale serve ở httpsPort) | cloudflare (Cloudflare Tunnel + Access: điền teamDomain và aud) | proxy (reverse proxy tự xác thực, gắn email vào header userHeader) | local (chỉ dùng trên chính máy). Xem README, mục Truy cập từ xa.",
+    "mode": "tailscale",
+    "cloudflare": { "teamDomain": "", "aud": "" },
+    "userHeader": ""
+  },
   "machines": [
-    { "name": "PC1", "computer": "DESKTOP-XXXXXXX", "host": "pc1" },
-    { "name": "PC2", "computer": "DESKTOP-YYYYYYY", "host": "pc2" }
+    { "name": "PC1", "computer": "DESKTOP-XXXXXXX", "host": "pc1", "url": "" },
+    { "name": "PC2", "computer": "DESKTOP-YYYYYYY", "host": "pc2", "url": "" }
   ]
 }

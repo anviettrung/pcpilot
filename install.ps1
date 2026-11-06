@@ -22,6 +22,7 @@ $StateFile = Join-Path $StateDir 'unitypilot-tree.txt'
 $Config = Get-Content -LiteralPath (Join-Path $Root 'unitypilot.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $Port = [int]$Config.port
 $HttpsPort = [int]$Config.httpsPort
+$Machines = Get-Content -LiteralPath (Join-Path $Root 'machines.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 
 function Say([string]$Text) { Write-Output "unitypilot: $Text" }
 function Fail([string]$Text) { Write-Output "unitypilot: $Text"; exit 1 }
@@ -148,6 +149,8 @@ if (-not ($sidecarPid -and $taskRunning -and $tree -eq $lastTree)) {
 }
 
 # --- 4. Tailscale ---------------------------------------------------------------------------------
+$Mode = if ($Machines.access -and $Machines.access.mode) { [string]$Machines.access.mode } else { 'tailscale' }
+if ($Mode -ne 'tailscale') { Say "truy cập từ xa: chế độ '$Mode' (machines.json > access), bỏ qua tailscale serve"; exit 0 }
 $ts = (Get-Command tailscale -ErrorAction SilentlyContinue).Source
 if (-not $ts) { $ts = 'C:\Program Files\Tailscale\tailscale.exe' }
 if (-not (Test-Path -LiteralPath $ts)) { Say 'chưa cài Tailscale, điện thoại chưa vào được'; exit 0 }

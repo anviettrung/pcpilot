@@ -16,7 +16,9 @@ export const useJpeg = !('VideoDecoder' in window) || params.has('jpeg');
 // --- Cài đặt lưu trên máy -------------------------------------------------------------------------
 export interface MachineInfo {
   name: string;
-  host: string;
+  host?: string;
+  /** Địa chỉ HTTPS của sidecar máy đó (url khai báo, hoặc địa chỉ tailnet). Không có: chỉ dùng tại chỗ. */
+  url?: string;
 }
 const PREF = 'unitypilot:prefs';
 export const prefs: {

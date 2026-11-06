@@ -1,13 +1,14 @@
 // Sidecar UnityPilot: chơi thử game Unity trong Editor từ điện thoại. Giữ kết nối với điện thoại (WebSocket), encode
 // H.264 bằng ffmpeg từ khung RGBA app đưa sang. Phần riêng của từng app (hiện có Unity) nằm trong src/apps/.
-// Nghe ở 127.0.0.1; máy khác vào qua `tailscale serve` (cổng HTTPS riêng, xem install.ps1). Chạy quyền thường.
+// Nghe ở 127.0.0.1; điện thoại vào qua lớp chuyển tiếp HTTPS (tailscale serve, Cloudflare Tunnel...; xem machines.json > access). Chạy quyền thường.
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import index from '../web/index.html';
 import { APPS } from './apps';
 import type { App, Client, Host, RawFrame, StreamTarget, WS } from './apps/types';
-import { cfg, log, machinesCfg, net, PORT, QUALITY, REPO, ROOT, self, UNITY_PORT, type Quality } from './core/config';
+import { isAllowed, isOriginAllowed } from './core/access';
+import { ACCESS, cfg, log, machinesCfg, net, PORT, QUALITY, REPO, ROOT, self, UNITY_PORT, type Quality } from './core/config';
 import { RawEncoder, detectEncoder, findFfmpeg, type EncodedFrame, type EncoderKind } from './core/encoder';
 
 // --- ffmpeg ------------------------------------------------------------------------------------------
@@ -218,7 +219,7 @@ function statusEvent() {
     build: BUILD,
     version: VERSION,
     machine: self.name,
-    machines: machinesCfg.machines.map((m) => ({ name: m.name, host: m.host })),
+    machines: machinesCfg.machines.map((m) => ({ name: m.name, host: m.host, url: machineUrl(m) })),
     httpsPort: cfg.httpsPort,
     tailnet: net.tailnet,
     app: active.id,
@@ -266,27 +267,19 @@ const host: Host = {
 for (const a of APPS) a.init(host);
 
 // --- Bảo mật (giống ClaudeMon) ----------------------------------------------------------------------
-// Chỉ nhận request từ chính máy này, hoặc qua `tailscale serve` từ đúng tài khoản chủ.
-function allowed(req: Request): boolean {
-  const login = req.headers.get('tailscale-user-login');
-  return login === null || login.toLowerCase() === machinesCfg.owner.toLowerCase();
+// Địa chỉ HTTPS của sidecar từng máy: `url` trong machines.json, hoặc https://<host>.<tailnet>:<httpsPort> khi dùng Tailscale.
+function machineUrl(m: { host?: string; url?: string }): string | undefined {
+  if (ACCESS === 'local') return undefined;
+  if (m.url) return m.url.replace(/\/+$/, '');
+  if (ACCESS === 'tailscale' && net.tailnet && m.host) return `https://${m.host}.${net.tailnet}:${cfg.httpsPort}`;
+  return undefined;
 }
-
-function originAllowed(req: Request): boolean {
-  const origin = req.headers.get('origin');
-  if (!origin) return true;
-  try {
-    const u = new URL(origin);
-    if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return true;
-    const label = u.hostname.split('.')[0];
-    return u.protocol === 'https:' && u.hostname.endsWith('.ts.net') && machinesCfg.machines.some((m) => m.host === label);
-  } catch {
-    return false;
-  }
-}
+// Chỉ nhận request từ chính máy này, hoặc qua lớp chuyển tiếp (access.mode) từ đúng tài khoản chủ. Xem src/core/access.ts.
+const allowed = (req: Request) => isAllowed(req, machinesCfg.owner, machinesCfg.access);
+const originAllowed = (req: Request) => isOriginAllowed(req, machinesCfg.machines.map(machineUrl));
 
 const forbidden = () => new Response('forbidden', { status: 403 });
-const guard = (h: (req: Request) => Response | Promise<Response>) => (req: Request) => (allowed(req) ? h(req) : forbidden());
+const guard = (h: (req: Request) => Response | Promise<Response>) => async (req: Request) => ((await allowed(req)) ? h(req) : forbidden());
 
 function staticFile(name: string, type?: string) {
   const path = resolve(ROOT, 'web', 'public', name);
@@ -313,10 +306,10 @@ const server = Bun.serve({
     '/sw.js': staticFile('sw.js', 'text/javascript'),
     '/api/status': guard(() => Response.json(statusEvent())),
   },
-  fetch(req, srv) {
+  async fetch(req, srv) {
     const url = new URL(req.url);
     if (url.pathname === '/ws') {
-      if (!allowed(req) || !originAllowed(req)) return forbidden();
+      if (!(await allowed(req)) || !originAllowed(req)) return forbidden();
       if (srv.upgrade(req, { data: { ua: req.headers.get('user-agent') ?? '' } } as any)) return;
       return new Response('upgrade failed', { status: 400 });
     }
