@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="UnityPilot">
+  <title>UnityPilot</title>
+  <link rel="manifest" href="./public/manifest.webmanifest">
+  <link rel="icon" href="./public/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="./public/apple-touch-icon.png">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main id="stage">
+    <canvas id="video"></canvas>
+    <div id="touches"></div>
+    <div id="pausedBadge" hidden>⏸ Tạm dừng</div>
+    <button id="updateBanner" type="button" hidden>Có bản mới · <b>Tải lại</b></button>
+    <div id="overlay" hidden>
+      <div class="spinner" id="spinner" hidden></div>
+      <div id="overlayTitle"></div>
+      <div id="overlayText"></div>
+      <button id="overlayPlay" type="button" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>Play
+      </button>
+      <button id="overlayAct" type="button" hidden></button>
+      <button id="overlayPick" type="button" hidden>Chọn</button>
+    </div>
+    <div id="toast" role="status" hidden></div>
+  </main>
+
+  <div id="bar">
+    <button id="menuBtn" class="icon" type="button" aria-label="Cài đặt">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <div id="info"><span id="dot"></span><span id="stat">…</span><span id="lat"></span></div>
+    <div class="group" data-group="unity" hidden>
+      <button id="pauseBtn" class="icon" type="button" aria-label="Tạm dừng" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>
+      </button>
+      <button id="playBtn" class="primary" type="button" aria-label="Play">
+        <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        <svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        <span class="spinner small"></span>
+      </button>
+    </div>
+    <button id="hideBarBtn" class="icon" type="button" aria-label="Thu gọn thanh">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    </button>
+  </div>
+  <button id="miniBtn" type="button" aria-label="Hiện thanh điều khiển (kéo để dời chỗ)" hidden><span id="miniDot"></span></button>
+
+  <div id="backdrop" hidden></div>
+  <section id="sheet" hidden aria-label="Cài đặt">
+    <div class="grabber"></div>
+    <div id="appInfo" class="app-info"></div>
+    <h3>Máy</h3>
+    <div class="seg" id="machineSeg"></div>
+    <div id="appRow" hidden>
+      <h3>Ứng dụng</h3>
+      <div class="seg" id="appSeg"></div>
+    </div>
+
+    <div class="section" data-section="unity" hidden>
+      <h3 class="with-action">Project <button id="rescanBtn" class="mini" type="button">Quét lại</button></h3>
+      <div id="projects"></div>
+      <h3>Tỉ lệ màn hình</h3>
+      <div class="seg" id="aspectSeg">
+        <button type="button" data-v="free">Tự do<small>theo máy</small></button>
+        <button type="button" data-v="16:9">16:9<small>phổ thông</small></button>
+        <button type="button" data-v="iphonex">iPhone X<small>19,5:9</small></button>
+        <button type="button" data-v="ipad">iPad<small>4:3</small></button>
+      </div>
+    </div>
+
+    <h3>Chất lượng</h3>
+    <div class="seg" id="qualitySeg">
+      <button type="button" data-v="max">Rất cao<small>1080p · 8 Mbps</small></button>
+      <button type="button" data-v="high">Cao<small>720p · 4 Mbps</small></button>
+      <button type="button" data-v="medium">Vừa<small>540p · 2,5</small></button>
+      <button type="button" data-v="low">Thấp<small>360p · 1,2</small></button>
+    </div>
+    <h3>Khung hình</h3>
+    <div class="seg" id="fpsSeg">
+      <button type="button" data-v="30">30 fps<small>nhẹ mạng</small></button>
+      <button type="button" data-v="60">60 fps<small>mượt hơn</small></button>
+    </div>
+    <label class="toggle"><input type="checkbox" id="showTouches"><span>Hiện điểm chạm</span></label>
+    <details id="metricsBox">
+      <summary>Thông số đo</summary>
+      <dl id="metrics"></dl>
+    </details>
+    <div class="sheet-actions">
+      <button id="reloadBtn" type="button">Tải lại</button>
+      <button id="fullBtn" type="button">Toàn màn hình</button>
+      <button id="closeSheet" type="button">Đóng</button>
+    </div>
+    <p id="installHint" hidden>Mẹo: bấm <b>Chia sẻ → Thêm vào MH chính</b> để mở UnityPilot toàn màn hình như một app.</p>
+  </section>
+
+  <div id="popup" hidden>
+    <div class="popup-box" role="dialog" aria-modal="true" aria-labelledby="popupTitle">
+      <div class="popup-where" id="popupWhere"></div>
+      <div class="popup-title" id="popupTitle"></div>
+      <div class="popup-shot"><img id="popupImg" alt="Ảnh hộp thoại trên máy"></div>
+      <p class="popup-hint">Bấm nút dưới, hoặc chạm thẳng vào ảnh như trên máy.</p>
+      <div id="popupButtons"></div>
+      <div class="popup-actions">
+        <button id="popupCancel" type="button">Đóng hộp thoại (Esc)</button>
+        <button id="popupLater" type="button">Để sau</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="dialog" hidden>
+    <div class="dialog-box" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+      <div id="dialogTitle"></div>
+      <div id="dialogText"></div>
+      <div id="dialogButtons"></div>
+    </div>
+  </div>
+
+  <script type="module" src="./app.ts"></script>
+</body>
+</html>

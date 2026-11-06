@@ -1,0 +1,10 @@
+{
+  "name": "UnityPilot.Unity.Runtime",
+  "rootNamespace": "UnityPilot.Unity",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "autoReferenced": false,
+  "noEngineReferences": false
+}

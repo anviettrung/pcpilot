@@ -1,0 +1,4 @@
+node_modules/
+*.log
+spike-results.jsonl
+shots/

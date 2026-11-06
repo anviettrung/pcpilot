@@ -1,0 +1,10 @@
+{
+  "name": "UnityPilot.Unity.Editor",
+  "rootNamespace": "UnityPilot.Unity.Editor",
+  "references": ["UnityPilot.Unity.Runtime", "Unity.InputSystem"],
+  "includePlatforms": ["Editor"],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "autoReferenced": false,
+  "noEngineReferences": false
+}
