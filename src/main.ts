@@ -265,7 +265,7 @@ const host: Host = {
 };
 for (const a of APPS) a.init(host);
 
-// --- Bảo mật (giống SessionMon) ----------------------------------------------------------------------
+// --- Bảo mật (giống ClaudeMon) ----------------------------------------------------------------------
 // Chỉ nhận request từ chính máy này, hoặc qua `tailscale serve` từ đúng tài khoản chủ.
 function allowed(req: Request): boolean {
   const login = req.headers.get('tailscale-user-login');

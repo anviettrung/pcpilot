@@ -89,7 +89,7 @@ Cổng ghi trong `unitypilot.json`. Danh sách máy và chủ tài khoản lấy
 
 ### Sidecar (`src/`)
 
-- `main.ts`: Bun.serve (PWA + WebSocket `/ws`), bảo mật giống SessionMon (`Tailscale-User-Login` phải là chủ tài khoản,
+- `main.ts`: Bun.serve (PWA + WebSocket `/ws`), bảo mật giống ClaudeMon (`Tailscale-User-Login` phải là chủ tài khoản,
   `Origin` của WebSocket phải là localhost hoặc `https://<máy>.<tailnet>.ts.net`). Chọn app đang xem, bật nguồn hình,
   encode, gửi khung, tự cập nhật.
 - Người xem vào sau cùng quyết định cỡ khung. Không còn ai xem (sau 3 giây) thì tắt chụp và ffmpeg.
